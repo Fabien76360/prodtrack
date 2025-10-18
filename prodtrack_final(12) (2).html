@@ -1242,6 +1242,7 @@
     </main>
     <section id="page-histo" role="region" aria-label="Historique de saisie" style="display:none; padding:16px;">
       <h2>Historique de saisie</h2>
+      <div id="histo-events-host"></div>
       <button id="btn-back-from-histo" type="button">Retour</button>
     </section>
 
@@ -3093,6 +3094,53 @@
 
   }catch(err){
     console.warn('Nav SPA init skipped:', err);
+  }
+})();
+</script>
+<script>
+(function(){
+  try{
+    function q(sel){ return document.querySelector(sel); }
+    function qa(sel){ return Array.from(document.querySelectorAll(sel)); }
+
+    var eventsNode = q('#events-today') || q('#evt-jour') || q('#evenements-jour') ||
+                     q('[aria-label*="Événements du jour" i]') || q('[data-section="events-today"]');
+
+    if (!eventsNode) {
+      var candidates = qa('section, div');
+      for (var i=0;i<candidates.length;i++){
+        var c = candidates[i];
+        var h = c.querySelector('h1,h2,h3,h4');
+        var t = h && (h.textContent || '').trim().toLowerCase();
+        if (t === 'événements du jour' || t === 'evenements du jour'){
+          eventsNode = c;
+          break;
+        }
+      }
+    }
+
+    var pageHisto = q('#page-histo');
+    if (pageHisto && !q('#histo-events-host')) {
+      var backBtn = pageHisto.querySelector('#btn-back-from-histo');
+      var host = document.createElement('div');
+      host.id = 'histo-events-host';
+      if (backBtn && backBtn.parentNode === pageHisto){
+        pageHisto.insertBefore(host, backBtn);
+      } else {
+        pageHisto.appendChild(host);
+      }
+    }
+
+    var hostNode = q('#histo-events-host');
+
+    if (eventsNode && pageHisto && hostNode){
+      if (eventsNode.parentElement !== hostNode){
+        hostNode.appendChild(eventsNode);
+      }
+    }
+
+  } catch(e){
+    console.warn('Move "Événements du jour" skipped:', e);
   }
 })();
 </script>
