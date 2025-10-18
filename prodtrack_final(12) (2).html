@@ -1,0 +1,2938 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ProdTrack - Pilotage Performance</title>
+<style>
+    :root {
+        color-scheme: dark;
+        --bg: radial-gradient(circle at 0% 0%, rgba(15, 23, 42, 0.85), rgba(2, 6, 23, 0.9));
+        --sidebar-bg: rgba(15, 23, 42, 0.45);
+        --card: rgba(15, 23, 42, 0.45);
+        --surface-hover: rgba(148, 163, 184, 0.08);
+        --accent: rgba(52, 211, 153, 0.85);
+        --accent-hover: rgba(74, 222, 128, 0.8);
+        --accent-light: rgba(52, 211, 153, 0.16);
+        --danger: #ef4444;
+        --success: #4ade80;
+        --text: #e2e8f0;
+        --text-secondary: rgba(203, 213, 225, 0.85);
+        --muted: #8a96b5;
+        --border: rgba(148, 163, 184, 0.25);
+        font-size: 16px;
+    }
+
+    * {
+        box-sizing: border-box;
+    }
+
+    body {
+        margin: 0;
+        font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        display: flex;
+        min-height: 100vh;
+        position: relative;
+        overflow-x: hidden;
+    }
+
+    body::before {
+        content: '';
+        position: fixed;
+        inset: 0;
+        background: radial-gradient(40% 40% at 30% 30%, rgba(255, 255, 255, 0.05), transparent 60%);
+        pointer-events: none;
+        z-index: 0;
+    }
+
+    .sidebar {
+        width: 280px;
+        background: var(--sidebar-bg);
+        padding: 1.5rem 1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+        position: sticky;
+        top: 0;
+        height: 100vh;
+        overflow-y: auto;
+        transition: width 0.3s ease, padding 0.3s ease, opacity 0.3s ease;
+        backdrop-filter: blur(24px);
+        border-right: 1px solid var(--border);
+        box-shadow: 0 20px 40px rgba(2, 6, 23, 0.35);
+        z-index: 1;
+    }
+
+    body.sidebar-collapsed .sidebar {
+        width: 0;
+        min-width: 0;
+        padding: 0;
+        border: 0;
+        opacity: 0;
+        pointer-events: none;
+        overflow: hidden;
+    }
+
+    .sidebar-toggle {
+        height: 2.75rem;
+        padding: 0 0.75rem;
+        border-radius: 1rem;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        background: rgba(15, 23, 42, 0.35);
+        color: var(--text);
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        font-weight: 500;
+        transition: background 0.2s ease, color 0.2s ease;
+        backdrop-filter: blur(16px);
+        box-shadow: 0 10px 25px rgba(15, 23, 42, 0.25);
+    }
+
+    .sidebar-toggle:hover {
+        background: rgba(148, 163, 184, 0.2);
+        color: #fff;
+    }
+
+    .logo-section {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        padding: 0 1rem;
+    }
+
+    .logo {
+        width: 50px;
+        height: 50px;
+        background: rgba(74, 222, 128, 0.2);
+        border-radius: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        color: var(--accent);
+        font-size: 1.2rem;
+        border: 1px solid rgba(74, 222, 128, 0.25);
+        box-shadow: inset 0 0 20px rgba(74, 222, 128, 0.15), 0 10px 30px rgba(15, 23, 42, 0.35);
+    }
+
+    .logo-text {
+        display: flex;
+        flex-direction: column;
+        line-height: 1.3;
+    }
+
+    .logo-text h1 {
+        margin: 0;
+        font-size: 1rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--text-secondary);
+    }
+
+    .logo-text h2 {
+        margin: 0;
+        font-size: 1.4rem;
+        font-weight: 700;
+    }
+
+    .line-badge {
+        background: rgba(15, 23, 42, 0.45);
+        padding: 0.65rem 1.25rem;
+        border-radius: 1rem;
+        margin: 0 1rem;
+        border: 1px solid var(--border);
+        backdrop-filter: blur(18px);
+        box-shadow: 0 12px 30px rgba(2, 6, 23, 0.35);
+    }
+
+    .line-badge-label {
+        font-size: 0.75rem;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 0.25rem;
+    }
+
+    .line-badge-value {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: var(--text);
+    }
+
+    .sidebar-menu {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .sidebar-summary {
+        background: rgba(15, 23, 42, 0.45);
+        border-radius: 1.25rem;
+        padding: 1.1rem;
+        border: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
+        gap: 0.9rem;
+        margin: 0 1rem;
+        color: var(--text);
+        user-select: none;
+        backdrop-filter: blur(20px);
+        box-shadow: 0 18px 40px rgba(2, 6, 23, 0.35);
+    }
+
+    .sidebar-summary h2 {
+        margin: 0;
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: var(--text);
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+    }
+
+    .sidebar-summary__metrics {
+        display: grid;
+        gap: 0.6rem;
+    }
+
+    .sidebar-summary__metric {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border-radius: 1rem;
+        padding: 0.55rem 0.8rem;
+        background: rgba(15, 23, 42, 0.4);
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        backdrop-filter: blur(18px);
+    }
+
+    .sidebar-summary__label {
+        font-size: 0.7rem;
+        color: var(--text-secondary);
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+    }
+
+    .sidebar-summary__value {
+        font-size: 1.05rem;
+        font-weight: 600;
+        color: var(--text);
+        font-variant-numeric: tabular-nums;
+    }
+
+    .sidebar-summary__distribution {
+        display: flex;
+        flex-direction: column;
+        gap: 0.45rem;
+    }
+
+    .sidebar-summary__dist-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 0.7rem;
+        color: var(--text-secondary);
+    }
+
+    .sidebar-summary__bar {
+        height: 8px;
+        width: 100%;
+        border-radius: 999px;
+        overflow: hidden;
+        background: rgba(148, 163, 184, 0.25);
+        display: flex;
+    }
+
+    .sidebar-summary__bar-segment {
+        height: 100%;
+        transition: width 0.3s ease;
+    }
+
+    .sidebar-summary__bar-segment--d {
+        background: #fb7185;
+    }
+
+    .sidebar-summary__bar-segment--p {
+        background: #fbbf24;
+    }
+
+    .sidebar-summary__bar-segment--q {
+        background: #34d399;
+    }
+
+    .sidebar-summary__link {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 1rem;
+        padding: 0.55rem 0.85rem;
+        background: rgba(255, 255, 255, 0.05);
+        color: var(--text);
+        text-decoration: none;
+        font-size: 0.75rem;
+        font-weight: 500;
+        transition: background 0.2s ease, border 0.2s ease;
+        border: 1px solid rgba(148, 163, 184, 0.2);
+    }
+
+    .sidebar-summary__link:hover,
+    .sidebar-summary__link:focus-visible {
+        background: rgba(148, 163, 184, 0.2);
+        border-color: rgba(74, 222, 128, 0.4);
+    }
+
+    .menu-item {
+        padding: 0.85rem 1.4rem;
+        border-radius: 1rem;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        font-weight: 500;
+        color: var(--text-secondary);
+        border: none;
+        background: transparent;
+        text-align: left;
+        width: 100%;
+        backdrop-filter: blur(12px);
+    }
+
+    .menu-item:hover {
+        background: rgba(148, 163, 184, 0.12);
+        color: var(--text);
+    }
+
+    .menu-item.active {
+        background: rgba(148, 163, 184, 0.18);
+        color: var(--text);
+        border-left: 3px solid var(--accent);
+        box-shadow: inset 0 0 0 1px rgba(74, 222, 128, 0.25);
+    }
+
+    .menu-icon {
+        width: 20px;
+        height: 20px;
+        opacity: 0.7;
+    }
+
+    .main-content {
+        flex: 1;
+        overflow-y: auto;
+        position: relative;
+        z-index: 1;
+    }
+
+    .top-header {
+        background: rgba(15, 23, 42, 0.45);
+        padding: 1.5rem 2rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+        flex-wrap: wrap;
+        gap: 1rem;
+        backdrop-filter: blur(24px);
+        border-radius: 0 0 2rem 2rem;
+        box-shadow: 0 25px 45px rgba(2, 6, 23, 0.4);
+    }
+
+    .header-left {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+
+    .header-line-label {
+        font-size: 0.75rem;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .header-line-value {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: var(--text);
+    }
+
+    .header-right {
+        display: flex;
+        gap: 1rem;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .header-actions {
+        display: flex;
+        gap: 0.75rem;
+    }
+
+    .current-time-display {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+    }
+
+    .clock {
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        border: 2px solid rgba(74, 222, 128, 0.35);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: var(--accent);
+        background: rgba(15, 23, 42, 0.35);
+        backdrop-filter: blur(16px);
+        box-shadow: 0 12px 30px rgba(15, 23, 42, 0.35);
+    }
+
+    .time-info {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+
+    .time-until {
+        font-size: 1.8rem;
+        font-weight: 700;
+        color: var(--text);
+    }
+
+    .time-label {
+        font-size: 0.9rem;
+        color: var(--text-secondary);
+    }
+
+    .save-status {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        font-size: 0.9rem;
+        color: var(--text-secondary);
+    }
+
+    .save-indicator {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--accent);
+        animation: pulse 2s infinite;
+        display: inline-block;
+        margin-right: 0.5rem;
+    }
+
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+    }
+
+    button, input, select, textarea {
+        font-family: inherit;
+        font-size: 1rem;
+    }
+
+    button {
+        border: none;
+        border-radius: 0.85rem;
+        padding: 0.5rem 1.25rem;
+        background: rgba(16, 185, 129, 0.8);
+        color: #0f172a;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        font-weight: 600;
+        font-size: 0.95rem;
+        box-shadow: 0 15px 30px rgba(16, 185, 129, 0.25);
+    }
+
+    button:hover {
+        background: rgba(74, 222, 128, 0.75);
+        transform: translateY(-1px);
+    }
+
+    button:focus {
+        outline: 3px solid rgba(74, 222, 128, 0.3);
+        outline-offset: 2px;
+    }
+
+    button.secondary {
+        background: rgba(255, 255, 255, 0.08);
+        color: var(--text);
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        box-shadow: none;
+        padding: 0.45rem 1.1rem;
+        font-size: 0.9rem;
+    }
+
+    button.secondary:hover {
+        background: rgba(255, 255, 255, 0.18);
+        color: #fff;
+        border-color: rgba(148, 163, 184, 0.5);
+    }
+
+    button.danger {
+        background: rgba(239, 68, 68, 0.85);
+        color: white;
+        box-shadow: 0 15px 25px rgba(239, 68, 68, 0.25);
+    }
+
+    button.danger:hover {
+        background: rgba(220, 38, 38, 0.8);
+    }
+
+    button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    main {
+        padding: 2rem;
+        display: grid;
+        gap: 1.5rem;
+        max-width: 1600px;
+    }
+
+    .card {
+        background: var(--card);
+        border-radius: 1.25rem;
+        padding: 1.5rem;
+        box-shadow: 0 25px 50px rgba(2, 6, 23, 0.45);
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        backdrop-filter: blur(24px);
+    }
+
+    .card h2 {
+        margin: 0 0 1.5rem 0;
+        font-size: 1.3rem;
+        font-weight: 600;
+        color: var(--text);
+    }
+
+    .time-slots-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+        gap: 0.65rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .time-slot {
+        background: rgba(15, 23, 42, 0.35);
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        border-radius: 1rem;
+        padding: 0.65rem 0.9rem;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        text-align: center;
+        font-weight: 500;
+        color: var(--text-secondary);
+        position: relative;
+        backdrop-filter: blur(16px);
+        box-shadow: 0 12px 25px rgba(2, 6, 23, 0.35);
+    }
+
+    .time-slot:hover {
+        border-color: var(--accent);
+        background: rgba(52, 211, 153, 0.12);
+        color: #fff;
+    }
+
+    .time-slot.active {
+        background: rgba(255, 255, 255, 0.05);
+        border-color: rgba(74, 222, 128, 0.8);
+        color: #fff;
+        box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.95), 0 0 0 4px rgba(74, 222, 128, 0.5), 0 20px 35px rgba(16, 185, 129, 0.35);
+        position: relative;
+    }
+
+    .time-slot.active::before {
+        content: 'En cours';
+        position: absolute;
+        top: -0.65rem;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: rgba(74, 222, 128, 0.15);
+        color: rgba(110, 231, 183, 0.95);
+        font-size: 0.55rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        padding: 0.2rem 0.6rem;
+        border-radius: 999px;
+        border: 1px solid rgba(74, 222, 128, 0.35);
+        backdrop-filter: blur(12px);
+    }
+
+    .time-slot.filled {
+        background: rgba(52, 211, 153, 0.18);
+        border-color: var(--accent);
+        color: var(--accent);
+    }
+
+    .time-slot.closed {
+        border-style: dashed;
+        color: rgba(148, 163, 184, 0.7);
+        background: rgba(15, 23, 42, 0.2);
+    }
+
+    .time-slot[data-quantity]::after {
+        content: attr(data-quantity);
+        display: block;
+        font-size: 0.75rem;
+        margin-top: 0.35rem;
+        color: var(--text);
+        opacity: 0.85;
+    }
+
+    .line-config {
+        display: flex;
+        flex-direction: column;
+        gap: 0.6rem;
+        margin: 1.1rem 0 1.5rem;
+        border: 0;
+        padding: 0;
+        min-inline-size: 0;
+    }
+
+    .line-config-title {
+        margin: 0;
+        padding: 0;
+        display: inline-flex;
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-weight: 600;
+        color: rgba(203, 213, 225, 0.75);
+    }
+
+    .line-config-options {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.65rem;
+    }
+
+    .line-config-option {
+        position: relative;
+        display: inline-flex;
+    }
+
+    .line-config-option input {
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+        pointer-events: none;
+    }
+
+    .line-config-option span {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+        padding: 0.45rem 1.1rem;
+        border-radius: 999px;
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        background: rgba(15, 23, 42, 0.4);
+        color: rgba(203, 213, 225, 0.85);
+        font-size: 0.8rem;
+        font-weight: 500;
+        letter-spacing: 0.02em;
+        text-transform: none;
+        transition: border-color 0.2s ease, background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+        backdrop-filter: blur(18px);
+        box-shadow: 0 14px 28px rgba(2, 6, 23, 0.32);
+    }
+
+    .line-config-option span::before {
+        content: '';
+        width: 0.45rem;
+        height: 0.45rem;
+        border-radius: 999px;
+        background: rgba(148, 163, 184, 0.45);
+        box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.35) inset;
+        transition: background 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .line-config-option:hover span {
+        border-color: rgba(148, 163, 184, 0.45);
+        color: #fff;
+    }
+
+    .line-config-option input:checked + span {
+        border-color: rgba(74, 222, 128, 0.65);
+        background: rgba(74, 222, 128, 0.12);
+        color: #f0fdf4;
+        box-shadow: 0 0 0 1px rgba(74, 222, 128, 0.35), 0 20px 36px rgba(16, 185, 129, 0.28);
+    }
+
+    .line-config-option input:checked + span::before {
+        background: rgba(74, 222, 128, 0.9);
+        box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.35);
+    }
+
+    .form-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+        align-items: end;
+    }
+
+    label {
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+        font-size: 0.75rem;
+        color: rgba(203, 213, 225, 0.85);
+    }
+
+    input, select, textarea {
+        padding: 0.6rem 0.85rem;
+        border-radius: 1rem;
+        border: 1px solid rgba(100, 116, 139, 0.35);
+        background: rgba(15, 23, 42, 0.35);
+        color: var(--text);
+        font-size: 0.95rem;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+        backdrop-filter: blur(14px);
+    }
+
+    input:focus, select:focus, textarea:focus {
+        outline: none;
+        border-color: rgba(74, 222, 128, 0.65);
+        background: rgba(15, 23, 42, 0.45);
+        box-shadow: 0 0 0 2px rgba(74, 222, 128, 0.3);
+    }
+
+    input:read-only {
+        background: rgba(15, 23, 42, 0.2);
+        cursor: not-allowed;
+    }
+
+    textarea {
+        min-height: 2.4rem;
+        resize: vertical;
+    }
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.92rem;
+    }
+
+    th, td {
+        padding: 0.7rem;
+        border-bottom: 1px solid var(--border);
+        vertical-align: top;
+        text-align: left;
+    }
+
+    th {
+        color: var(--text-secondary);
+        font-weight: 600;
+        text-transform: uppercase;
+        font-size: 0.8rem;
+        letter-spacing: 0.05em;
+    }
+
+    tbody tr:hover {
+        background: rgba(74, 222, 128, 0.06);
+    }
+
+    .table-actions {
+        display: flex;
+        gap: 0.4rem;
+    }
+
+    .profile-meta {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        margin-bottom: 1.75rem;
+    }
+
+    .profile-meta-grid {
+        display: grid;
+        gap: 0.9rem;
+    }
+
+    .profile-meta-grid--dual {
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    }
+
+    .profile-meta-grid--triple {
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    }
+
+    .profile-meta-card {
+        background: rgba(15, 23, 42, 0.4);
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        border-radius: 1.1rem;
+        padding: 1rem 1.15rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+        min-height: 112px;
+        backdrop-filter: blur(16px);
+        box-shadow: 0 18px 36px rgba(2, 6, 23, 0.35);
+    }
+
+    .profile-meta-label {
+        font-size: 0.65rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: rgba(203, 213, 225, 0.75);
+        font-weight: 600;
+    }
+
+    .profile-meta-value {
+        font-size: 1.65rem;
+        font-weight: 700;
+        color: rgba(148, 255, 221, 0.95);
+        line-height: 1.2;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .profile-meta-subtext {
+        font-size: 0.78rem;
+        color: rgba(203, 213, 225, 0.65);
+    }
+
+    .profile-meta-delta.positive {
+        color: var(--accent);
+    }
+
+    .profile-meta-delta.negative {
+        color: var(--danger);
+    }
+
+    .profile-meta-delta.neutral {
+        color: rgba(226, 232, 240, 0.8);
+    }
+
+    .profile-meta-validation.ok {
+        color: var(--success);
+    }
+
+    .profile-meta-validation.warn {
+        color: #facc15;
+    }
+
+    .profile-meta-validation.idle {
+        color: rgba(148, 163, 184, 0.6);
+    }
+
+    .closure-section {
+        margin-top: 1.5rem;
+    }
+
+    .closure-details {
+        background: rgba(15, 23, 42, 0.35);
+        border-radius: 1rem;
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        overflow: hidden;
+        transition: border-color 0.2s ease, background 0.2s ease;
+        backdrop-filter: blur(18px);
+    }
+
+    .closure-details summary {
+        margin: 0;
+        list-style: none;
+        cursor: pointer;
+        padding: 0.9rem 1.1rem;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        background: rgba(15, 23, 42, 0.35);
+        color: var(--text);
+        border-radius: 1rem 1rem 0 0;
+        backdrop-filter: blur(16px);
+        border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+    }
+
+    .closure-details summary::-webkit-details-marker {
+        display: none;
+    }
+
+    .closure-details summary::after {
+        content: '\25BE';
+        font-size: 0.9rem;
+        color: var(--text-secondary);
+        transition: transform 0.2s ease;
+    }
+
+    .closure-details[open] summary::after {
+        transform: rotate(-180deg);
+    }
+
+    .closure-details[open] summary {
+        border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+    }
+
+    .closure-details-content {
+        padding: 1rem 1.35rem 1.35rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.7rem;
+        background: rgba(15, 23, 42, 0.35);
+        border-top: none;
+        border-radius: 0 0 1rem 1rem;
+        backdrop-filter: blur(16px);
+    }
+
+    .closure-summary-count {
+        font-size: 0.75rem;
+        color: var(--text-secondary);
+        background: rgba(148, 163, 184, 0.18);
+        padding: 0.15rem 0.6rem;
+        border-radius: 999px;
+        font-weight: 500;
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        transition: color 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+    }
+
+    .closure-details[open] .closure-summary-count {
+        color: var(--accent);
+        background: rgba(74, 222, 128, 0.16);
+        border-color: rgba(74, 222, 128, 0.35);
+    }
+
+    .closure-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 1rem;
+        align-items: end;
+    }
+
+    .closure-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .closure-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        padding: 0.75rem 1rem;
+        border-radius: 0.9rem;
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        background: rgba(15, 23, 42, 0.35);
+        backdrop-filter: blur(12px);
+    }
+
+    .closure-item span {
+        font-weight: 500;
+        color: rgba(226, 232, 240, 0.9);
+    }
+
+    #hourQuantity:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+
+    .toast {
+        position: fixed;
+        bottom: 1.5rem;
+        right: 1.5rem;
+        background: rgba(16, 185, 129, 0.85);
+        color: #0f172a;
+        padding: 0.65rem 1rem;
+        border-radius: 0.75rem;
+        opacity: 0;
+        transform: translateY(10px);
+        pointer-events: none;
+        transition: opacity 0.3s ease, transform 0.3s ease;
+        z-index: 50;
+        box-shadow: 0 15px 30px rgba(16, 185, 129, 0.35);
+    }
+
+    .toast.show {
+        opacity: 1;
+        transform: translateY(0);
+    }
+
+    @media (max-width: 1024px) {
+        body {
+            flex-direction: column;
+        }
+
+        .sidebar {
+            width: 100%;
+            height: auto;
+            position: relative;
+        }
+
+        main {
+            padding: 1rem;
+        }
+
+        .time-slots-grid {
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+        }
+
+        .top-header {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+    }
+</style>
+</head>
+<body class="bg-gradient-to-br from-slate-900 via-slate-950 to-slate-900 text-slate-100">
+<!-- Sidebar -->
+<aside class="sidebar">
+    <div class="logo-section">
+        <div class="logo">P</div>
+        <div class="logo-text">
+            <h1>PRODTRACK</h1>
+            <h2>Pilotage Performance</h2>
+        </div>
+    </div>
+
+    <nav class="sidebar-menu">
+        <button class="menu-item active" data-menu="saisie">
+            <span class="menu-icon">⏱️</span>
+            Saisie opérateur
+        </button>
+        <button class="menu-item" data-menu="historique">
+            <span class="menu-icon">📋</span>
+            Historique de saisie
+        </button>
+        <button class="menu-item" data-menu="parametres">
+            <span class="menu-icon">⚙️</span>
+            Paramètres
+        </button>
+    </nav>
+
+    <section class="sidebar-summary" aria-label="Synthèse du jour" id="summary">
+        <h2>Synthèse du jour</h2>
+        <div class="sidebar-summary__metrics">
+            <div class="sidebar-summary__metric">
+                <span class="sidebar-summary__label">Production</span>
+                <span class="sidebar-summary__value" id="summaryProduction">0&nbsp;u</span>
+            </div>
+            <div class="sidebar-summary__metric">
+                <span class="sidebar-summary__label">Arrêts</span>
+                <span class="sidebar-summary__value" id="summaryDowntime">0&nbsp;min</span>
+            </div>
+            <div class="sidebar-summary__metric">
+                <span class="sidebar-summary__label">TRS</span>
+                <span class="sidebar-summary__value" id="summaryOee">0&nbsp;%</span>
+            </div>
+        </div>
+        <div class="sidebar-summary__distribution">
+            <div class="sidebar-summary__dist-header">
+                <span>Répartition D / P / Q</span>
+                <span id="summarySplitText">0&nbsp;% · 0&nbsp;% · 0&nbsp;%</span>
+            </div>
+            <div class="sidebar-summary__bar" role="presentation" aria-hidden="true">
+                <div class="sidebar-summary__bar-segment sidebar-summary__bar-segment--d" id="summarySplitD" style="width: 0%;"></div>
+                <div class="sidebar-summary__bar-segment sidebar-summary__bar-segment--p" id="summarySplitP" style="width: 0%;"></div>
+                <div class="sidebar-summary__bar-segment sidebar-summary__bar-segment--q" id="summarySplitQ" style="width: 0%;"></div>
+            </div>
+        </div>
+        <a href="#evenements" class="sidebar-summary__link">Voir les détails</a>
+    </section>
+</aside>
+
+<!-- Main Content -->
+<div class="main-content">
+    <header class="top-header">
+        <div class="header-left">
+            <div class="header-line-label">LIGNE</div>
+            <div class="header-line-value" id="headerLine">L16</div>
+        </div>
+        <div class="header-right">
+            <div class="current-time-display">
+                <div class="clock" id="clockDisplay">23:29</div>
+                <div class="time-info">
+                    <div class="time-until" id="timeUntil">01:00</div>
+                    <div class="time-label">Actualisation 1 s</div>
+                </div>
+            </div>
+            <div class="save-status">
+                <div>
+                    <span class="save-indicator"></span>
+                    <span id="saveStatusText">Sauvegardé en cours de journée</span>
+                </div>
+                <div style="font-size: 0.85rem;">Dernière sauvegarde : <span id="lastSaveTime">07:29</span></div>
+            </div>
+            <div class="header-actions">
+                <button id="newDayBtn" class="secondary">Nouvelle journée</button>
+                <button id="closeDayBtn">Clôturer la journée</button>
+                <button
+                    type="button"
+                    id="sidebarToggle"
+                    class="sidebar-toggle"
+                    aria-label="Afficher/masquer le menu"
+                    title="Afficher/masquer le menu"
+                    aria-pressed="false"
+                >
+                    <span data-sidebar-state="expanded">⟨ Menu</span>
+                    <span data-sidebar-state="collapsed" style="display: none;">Menu ⟩</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main>
+        <!-- Time Selector Section -->
+        <section class="card">
+            <h2>Saisie opérateur</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">Timer, pré-remplissage et validation automatique</p>
+
+            <label style="display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1.5rem; max-width: 240px;">
+                Équipe
+                <select id="teamSelect"></select>
+            </label>
+
+            <div class="time-slots-grid" id="timeSlots">
+                <!-- Generated by JS -->
+            </div>
+
+            <fieldset class="line-config">
+                <legend class="line-config-title">Configuration ligne</legend>
+                <div class="line-config-options">
+                    <label class="line-config-option">
+                        <input type="radio" name="lineConfiguration" value="standard" checked>
+                        <span>Standard</span>
+                    </label>
+                    <label class="line-config-option">
+                        <input type="radio" name="lineConfiguration" value="cadence-plus">
+                        <span>Cadence +</span>
+                    </label>
+                    <label class="line-config-option">
+                        <input type="radio" name="lineConfiguration" value="oee-max">
+                        <span>OEE cible +</span>
+                    </label>
+                </div>
+            </fieldset>
+
+            <label style="margin-top: 1rem;">
+                Quantité produite
+                <input id="hourQuantity" name="hourQuantity" type="number" min="0" step="1" placeholder="0" disabled>
+            </label>
+
+            <div class="closure-section">
+                <details class="closure-details" aria-label="Gestion des périodes fermées">
+                    <summary>
+                        <span>Gestion des périodes fermées</span>
+                        <span class="closure-summary-count" id="closureSummaryCount">0</span>
+                    </summary>
+                    <div class="closure-details-content">
+                        <div class="closure-grid">
+                            <label>
+                                Début fermeture
+                                <input id="closureStart" name="closureStart" type="time">
+                            </label>
+                            <label>
+                                Fin fermeture
+                                <input id="closureEnd" name="closureEnd" type="time">
+                            </label>
+                        </div>
+                        <div style="display:flex; gap:0.75rem; flex-wrap:wrap; align-items:center;">
+                            <button id="addClosureBtn" class="secondary" type="button">Ajouter une fermeture</button>
+                            <span style="font-size:0.85rem; color:var(--text-secondary);">Marque les périodes sans production.</span>
+                        </div>
+                        <div id="closureList" class="closure-list" aria-live="polite"></div>
+                    </div>
+                </details>
+            </div>
+        </section>
+
+        <!-- Event Form Section -->
+        <section class="card" aria-label="Nouvel événement">
+            <h2>événements</h2>
+            <div class="profile-meta" aria-live="polite">
+                <div class="profile-meta-grid profile-meta-grid--dual">
+                    <div class="profile-meta-card">
+                        <span class="profile-meta-label">Minutes à justifier</span>
+                        <span class="profile-meta-value" id="profileMinutesAjust">—</span>
+                        <span class="profile-meta-subtext" id="profileMinutesAjustHint">Production vs objectif</span>
+                    </div>
+                    <div class="profile-meta-card">
+                        <span class="profile-meta-label">Delta</span>
+                        <span class="profile-meta-value profile-meta-delta neutral" id="profileDelta">—</span>
+                        <span class="profile-meta-subtext" id="profileDeltaHint">Cible : —</span>
+                    </div>
+                </div>
+                <div class="profile-meta-grid profile-meta-grid--triple">
+                    <div class="profile-meta-card">
+                        <span class="profile-meta-label">OEE horaire</span>
+                        <span class="profile-meta-value" id="profileOeeHour">—</span>
+                        <span class="profile-meta-subtext">Cible : <span id="profileOeeTarget">—</span></span>
+                    </div>
+                    <div class="profile-meta-card">
+                        <span class="profile-meta-label">Minutes causes</span>
+                        <span class="profile-meta-value" id="profileMinutesCauses">—</span>
+                        <span class="profile-meta-subtext">Reste : <span id="profileMinutesReste">—</span> min</span>
+                    </div>
+                    <div class="profile-meta-card">
+                        <span class="profile-meta-label">Validation</span>
+                        <span class="profile-meta-value profile-meta-validation idle" id="profileValidation">—</span>
+                        <span class="profile-meta-subtext" id="profileValidationHint">Sélectionnez un créneau</span>
+                    </div>
+                </div>
+            </div>
+            <form id="eventForm">
+                <div class="form-grid" id="formGrid">
+                    <label>
+                        Type
+                        <select id="type" name="type" required></select>
+                    </label>
+                    <label>
+                        Catégorie
+                        <select id="category" name="category" required></select>
+                    </label>
+                    <label>
+                        Cause 5M
+                        <select id="cause" name="cause" required></select>
+                    </label>
+                    <label>
+                        Détail
+                        <select id="detail" name="detail" required></select>
+                    </label>
+                    <label>
+                        Durée (min)
+                        <input id="duration" name="duration" type="number" min="1" step="1" required>
+                    </label>
+                    <div id="dynamicFields" class="form-grid" style="grid-column: 1/-1; padding-top:0"></div>
+                </div>
+                <label data-field="commentaire" class="optional-field" style="display:flex; flex-direction:column; gap:0.5rem; margin-top:1.5rem;">
+                    Commentaire
+                    <textarea id="commentaire" name="commentaire" maxlength="200" placeholder="Observation"></textarea>
+                </label>
+                <div style="margin-top:1.5rem; display:flex; gap:1rem; flex-wrap:wrap">
+                    <button id="submitBtn" type="submit">Ajouter</button>
+                    <button id="undoLastBtn" class="secondary" type="button">Annule dernière saisie</button>
+                </div>
+            </form>
+        </section>
+
+        <!-- Events Table Section -->
+        <section class="card" aria-label="Liste du jour">
+            <h2>Événements du jour</h2>
+            <div style="overflow-x:auto">
+                <table aria-describedby="summary">
+                    <thead>
+                        <tr>
+                            <th>Heure</th>
+                            <th>Type</th>
+                            <th>Catégorie</th>
+                            <th>Cause</th>
+                            <th>Détail</th>
+                            <th>Durée</th>
+                            <th>Équipement</th>
+                            <th>Article</th>
+                            <th>Lot</th>
+                            <th>Commentaires</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="eventTableBody"></tbody>
+                </table>
+            </div>
+        </section>
+
+    </main>
+</div>
+
+<div class="toast" role="status" aria-live="polite" id="toast"></div>
+<input id="configFileInput" type="file" accept="application/json" style="display:none">
+<input id="lineInput" type="hidden" value="L16">
+
+<script>
+(() => {
+    const STORAGE_KEYS = {
+        line: 'prodtrack:v1:line',
+        config: 'prodtrack:v1:config',
+        sidebar: 'pp:sidebar',
+        day: (date, line) => `prodtrack:v1:day:${date}:${line || 'sans-ligne'}`,
+        seq: (date, line, eq) => `prodtrack:v1:seq:${date}:${line || 'sans-ligne'}:${eq || 'NA'}`,
+        production: (date, line) => `prodtrack:v1:production:${date}:${line || 'sans-ligne'}`,
+        closures: (date, line) => `prodtrack:v1:closures:${date}:${line || 'sans-ligne'}`
+    };
+
+    const TEAM_SHIFTS = [
+        { id: 'all', label: 'Toutes équipes', fullDay: true },
+        { id: 'matin', label: 'Équipe matin (06h00 - 14h00)', start: 6, end: 14 },
+        { id: 'apresmidi', label: 'Équipe après-midi (14h00 - 22h00)', start: 14, end: 22 },
+        { id: 'nuit', label: 'Équipe nuit (22h00 - 06h00)', start: 22, end: 6 }
+    ];
+
+    const HOUR_DURATION_MINUTES = 60;
+    const FR_NUMBER = new Intl.NumberFormat('fr-FR');
+
+    const defaultConfig = {
+        version: '1.0.0',
+        metrics: {
+            hourly_target_quantity: 400,
+            oee_target: 82,
+            minutes_tolerance: 0,
+            quantity_tolerance: 0
+        },
+        prefix_map: {
+            'Panne': 'PAN',
+            'Réglage': 'REG',
+            'Changement de format': 'CHF',
+            'Défaut en cours': 'DEF',
+            'Vitesse réduite': 'VRD',
+            'Arrêt planifié': 'PLN'
+        },
+        export: {
+            filename: 'prodtrack_{DATE}_{LINE}',
+            csv_columns: [
+                'detail_code', 'date', 'line', 'type', 'categorie', 'cause', 'detail',
+                'heure', 'debut', 'fin', 'duree_min', 'equipement', 'sous_ensemble',
+                'article', 'lot', 'type_defaut', 'raison_cadence', 'zone', 'utilite',
+                'commentaire'
+            ]
+        },
+        rules: [
+            { when: { type: 'Panne' }, requires: ['equipement', 'sous_ensemble'], optional: ['article', 'lot', 'zone', 'commentaire'] },
+            { when: { type: 'Réglage' }, requires: ['equipement'], optional: ['article', 'lot', 'raison_cadence'] },
+            { when: { type: 'Changement de format' }, requires: ['equipement'], optional: ['article', 'lot'] },
+            { when: { type: 'Défaut en cours' }, requires: ['equipement', 'type_defaut'], optional: ['article', 'lot'] },
+            { when: { type: 'Vitesse réduite' }, requires: ['equipement'], optional: ['raison_cadence', 'utilite'] },
+            { when: { type: 'Arrêt planifié' }, requires: [], optional: ['equipement', 'zone', 'utilite'] }
+        ],
+        types: [
+            {
+                name: 'Panne',
+                categories: [
+                    {
+                        name: 'Mécanique',
+                        causes: [
+                            { name: 'Rupture composant', details: ['Casse engrenage', 'Chaine déraillée', '*'] },
+                            { name: 'Blocage', details: ['Capteur bloqué', 'Guide tordu', '*'] }
+                        ]
+                    },
+                    {
+                        name: 'Électrique',
+                        causes: [
+                            { name: 'Armoires', details: ['Disjoncteur déclenché', 'Fusible grillé'] },
+                            { name: 'Automatisme', details: ['API défaut', 'Barrière sécurité', '*'] }
+                        ]
+                    }
+                ]
+            },
+            {
+                name: 'Réglage',
+                categories: [
+                    {
+                        name: 'Calage format',
+                        causes: [
+                            { name: 'Réglage standard', details: ['Hauteur buse', 'Pression bouchon'] },
+                            { name: 'Contrôle qualité', details: ['Échantillonnage', '*'] }
+                        ]
+                    }
+                ]
+            },
+            {
+                name: 'Changement de format',
+                categories: [
+                    {
+                        name: 'Préparatif',
+                        causes: [
+                            { name: 'Montage outillage', details: ['Jeu 50cl', 'Jeu 33cl', '*'] }
+                        ]
+                    }
+                ]
+            },
+            {
+                name: 'Défaut en cours',
+                categories: [
+                    {
+                        name: 'Qualité',
+                        causes: [
+                            { name: 'Aspect', details: ['Rayure bouteille', 'Étiquette pliée'] },
+                            { name: 'Volume', details: ['Sous-dosage', 'Sur-dosage'] }
+                        ]
+                    }
+                ]
+            },
+            {
+                name: 'Vitesse réduite',
+                categories: [
+                    {
+                        name: 'Cadence machine',
+                        causes: [
+                            { name: 'Limitation opérateur', details: ['Observation visuelle', '*'] },
+                            { name: 'Procédé', details: ['Montée en cadence', 'Nettoyage en cours'] }
+                        ]
+                    }
+                ]
+            },
+            {
+                name: 'Arrêt planifié',
+                categories: [
+                    {
+                        name: 'Organisation',
+                        causes: [
+                            { name: 'Pause', details: ['Pause repas', 'Réunion équipe'] },
+                            { name: 'Maintenance planifiée', details: ['Graissage', '*'] }
+                        ]
+                    }
+                ]
+            }
+        ],
+        assets: [
+            {
+                code: 'REMPL',
+                label: 'Remplisseuse',
+                subsets: [
+                    { slug: 'cuve', label: 'Cuve' },
+                    { slug: 'conv', label: 'Convoyeur' },
+                    { slug: 'dos', label: 'Dosage' }
+                ]
+            },
+            {
+                code: 'MIRG',
+                label: 'Mirage',
+                subsets: [
+                    { slug: 'cam', label: 'Caméra' },
+                    { slug: 'rej', label: 'Rejet' },
+                    { slug: 'vis', label: 'Visée' }
+                ]
+            }
+        ]
+    };
+
+    function withConfigDefaults(input) {
+        const base = JSON.parse(JSON.stringify(defaultConfig));
+        if (!input || typeof input !== 'object') {
+            return base;
+        }
+        Object.keys(input).forEach((key) => {
+            if (key === 'metrics' && input.metrics && typeof input.metrics === 'object') {
+                base.metrics = { ...base.metrics, ...input.metrics };
+            } else {
+                base[key] = input[key];
+            }
+        });
+        return base;
+    }
+
+    const FIELD_DEFS = {
+        equipement: { label: 'Équipement', type: 'select' },
+        sous_ensemble: { label: 'Sous-ensemble', type: 'select' },
+        article: { label: 'Article', type: 'text', placeholder: 'Code article' },
+        lot: { label: 'Lot', type: 'text', placeholder: 'Lot suivi' },
+        type_defaut: { label: 'Type de défaut', type: 'text' },
+        raison_cadence: { label: 'Raison cadence', type: 'text' },
+        zone: { label: 'Zone', type: 'text' },
+        utilite: { label: 'Utilité', type: 'text' }
+    };
+
+    const form = document.getElementById('eventForm');
+    const toast = document.getElementById('toast');
+    const typeSelect = document.getElementById('type');
+    const categorySelect = document.getElementById('category');
+    const causeSelect = document.getElementById('cause');
+    const detailSelect = document.getElementById('detail');
+    const durationInput = document.getElementById('duration');
+    const lineInput = document.getElementById('lineInput');
+    const eventTableBody = document.getElementById('eventTableBody');
+    const summaryProduction = document.getElementById('summaryProduction');
+    const summaryDowntime = document.getElementById('summaryDowntime');
+    const summaryOee = document.getElementById('summaryOee');
+    const summarySplitText = document.getElementById('summarySplitText');
+    const summarySplitD = document.getElementById('summarySplitD');
+    const summarySplitP = document.getElementById('summarySplitP');
+    const summarySplitQ = document.getElementById('summarySplitQ');
+    const profileMinutesAjust = document.getElementById('profileMinutesAjust');
+    const profileMinutesAjustHint = document.getElementById('profileMinutesAjustHint');
+    const profileMinutesCauses = document.getElementById('profileMinutesCauses');
+    const profileMinutesReste = document.getElementById('profileMinutesReste');
+    const profileDelta = document.getElementById('profileDelta');
+    const profileDeltaHint = document.getElementById('profileDeltaHint');
+    const profileOeeHour = document.getElementById('profileOeeHour');
+    const profileOeeTarget = document.getElementById('profileOeeTarget');
+    const profileValidation = document.getElementById('profileValidation');
+    const profileValidationHint = document.getElementById('profileValidationHint');
+    const dynamicFieldsContainer = document.getElementById('dynamicFields');
+    const configFileInput = document.getElementById('configFileInput');
+    const submitBtn = document.getElementById('submitBtn');
+    const undoLastBtn = document.getElementById('undoLastBtn');
+    const timeSlotsContainer = document.getElementById('timeSlots');
+    const hourQuantityInput = document.getElementById('hourQuantity');
+    const clockDisplay = document.getElementById('clockDisplay');
+    const timeUntil = document.getElementById('timeUntil');
+    const saveStatusText = document.getElementById('saveStatusText');
+    const lastSaveTime = document.getElementById('lastSaveTime');
+    const sidebarLine = document.getElementById('sidebarLine');
+    const headerLine = document.getElementById('headerLine');
+    const newDayBtn = document.getElementById('newDayBtn');
+    const closeDayBtn = document.getElementById('closeDayBtn');
+    const teamSelect = document.getElementById('teamSelect');
+    const sidebarElement = document.querySelector('.sidebar');
+    const sidebarToggleBtn = document.getElementById('sidebarToggle');
+    const closureStartInput = document.getElementById('closureStart');
+    const closureEndInput = document.getElementById('closureEnd');
+    const closureList = document.getElementById('closureList');
+    const closureSummaryCount = document.getElementById('closureSummaryCount');
+    const addClosureBtn = document.getElementById('addClosureBtn');
+
+    let activeConfig = null;
+    let events = [];
+    let editingId = null;
+    let selectedTimeSlot = null;
+    let selectedTeamId = TEAM_SHIFTS[0].id;
+    let sidebarCollapsed = false;
+    let additionHistory = [];
+    let hourQuantities = {};
+    let lineClosures = [];
+
+    const today = new Date();
+    const currentDate = today.toISOString().slice(0, 10);
+
+    function applySidebarState() {
+        if (!sidebarElement) return;
+        document.body.classList.toggle('sidebar-collapsed', sidebarCollapsed);
+        if (sidebarToggleBtn) {
+            sidebarToggleBtn.setAttribute('aria-pressed', sidebarCollapsed ? 'true' : 'false');
+            const expandedLabel = sidebarToggleBtn.querySelector('[data-sidebar-state="expanded"]');
+            const collapsedLabel = sidebarToggleBtn.querySelector('[data-sidebar-state="collapsed"]');
+            if (expandedLabel) {
+                expandedLabel.style.display = sidebarCollapsed ? 'none' : 'inline';
+            }
+            if (collapsedLabel) {
+                collapsedLabel.style.display = sidebarCollapsed ? 'inline' : 'none';
+            }
+        }
+    }
+
+    function loadSidebarState() {
+        if (!sidebarElement) return;
+        const stored = localStorage.getItem(STORAGE_KEYS.sidebar);
+        sidebarCollapsed = stored === '1';
+        applySidebarState();
+    }
+
+    function toggleSidebar() {
+        if (!sidebarElement) return;
+        sidebarCollapsed = !sidebarCollapsed;
+        localStorage.setItem(STORAGE_KEYS.sidebar, sidebarCollapsed ? '1' : '0');
+        applySidebarState();
+    }
+
+    function generateId() {
+        if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+            return crypto.randomUUID();
+        }
+        return 'evt-' + Math.random().toString(16).slice(2) + Date.now().toString(16);
+    }
+
+    function timeToMinutes(value) {
+        if (!value) return null;
+        const [hours, minutes] = value.split(':').map(Number);
+        if (Number.isNaN(hours) || Number.isNaN(minutes)) {
+            return null;
+        }
+        const total = hours * 60 + minutes;
+        return ((total % (24 * 60)) + (24 * 60)) % (24 * 60);
+    }
+
+    function calculateClosureDuration(closure) {
+        const start = timeToMinutes(closure.start);
+        const end = timeToMinutes(closure.end);
+        if (start === null || end === null) return 0;
+        if (start === end) return 24 * 60;
+        if (start < end) {
+            return end - start;
+        }
+        return (24 * 60 - start) + end;
+    }
+
+    function isMinuteWithinClosure(minute, closure) {
+        const start = timeToMinutes(closure.start);
+        const end = timeToMinutes(closure.end);
+        if (start === null || end === null) return false;
+        if (start === end) return true;
+        if (start < end) {
+            return minute >= start && minute < end;
+        }
+        return minute >= start || minute < end;
+    }
+
+    function isHourClosed(hour) {
+        const minute = Number(hour) * 60;
+        if (Number.isNaN(minute)) return false;
+        return lineClosures.some(closure => isMinuteWithinClosure(minute, closure));
+    }
+
+    function calculateClosureMinutesForHour(hour) {
+        if (!lineClosures || !lineClosures.length) return 0;
+        const numericHour = Number(hour);
+        if (Number.isNaN(numericHour)) return 0;
+        const startMinute = ((numericHour % 24) + 24) % 24 * 60;
+        const endMinute = startMinute + HOUR_DURATION_MINUTES;
+        return lineClosures.reduce((total, closure) => {
+            const ranges = closureToMinuteRanges(closure);
+            return total + ranges.reduce((rangeTotal, [rangeStart, rangeEnd]) => {
+                const overlapStart = Math.max(rangeStart, startMinute);
+                const overlapEnd = Math.min(rangeEnd, endMinute);
+                const overlap = Math.max(0, overlapEnd - overlapStart);
+                return rangeTotal + overlap;
+            }, 0);
+        }, 0);
+    }
+
+    function closureToMinuteRanges(closure) {
+        const start = timeToMinutes(closure.start);
+        const end = timeToMinutes(closure.end);
+        if (start === null || end === null) {
+            return [];
+        }
+        if (start === end) {
+            return [[0, 24 * 60]];
+        }
+        if (start < end) {
+            return [[start, end]];
+        }
+        return [[start, 24 * 60], [0, end]];
+    }
+
+    function calculateMinutesCausesForHour(hour) {
+        if (!events || !events.length || !hour) return 0;
+        const slotKey = `${String(hour).padStart(2, '0')}:00`;
+        return events
+            .filter(event => event.heure === slotKey)
+            .reduce((acc, event) => acc + Number(event.duree_min || 0), 0);
+    }
+
+    function getMetrics() {
+        const metrics = activeConfig?.metrics || {};
+        const base = defaultConfig.metrics;
+        const hourlyTarget = Number(metrics.hourly_target_quantity);
+        const oeeTarget = Number(metrics.oee_target);
+        const minutesTolerance = Number(metrics.minutes_tolerance);
+        const quantityTolerance = Number(metrics.quantity_tolerance);
+        return {
+            hourlyTargetQuantity: Number.isFinite(hourlyTarget) && hourlyTarget > 0
+                ? hourlyTarget
+                : base.hourly_target_quantity,
+            oeeTarget: Number.isFinite(oeeTarget) && oeeTarget > 0
+                ? oeeTarget
+                : base.oee_target,
+            minutesTolerance: Number.isFinite(minutesTolerance) && minutesTolerance >= 0
+                ? minutesTolerance
+                : base.minutes_tolerance,
+            quantityTolerance: Number.isFinite(quantityTolerance) && quantityTolerance >= 0
+                ? quantityTolerance
+                : base.quantity_tolerance
+        };
+    }
+
+    function formatMinutes(value) {
+        if (!Number.isFinite(value)) return '—';
+        const rounded = Math.round(value * 10) / 10;
+        return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+    }
+
+    function formatQuantity(value) {
+        if (!Number.isFinite(value)) return '—';
+        return String(Math.round(value));
+    }
+
+    function formatDeltaQuantity(value) {
+        if (!Number.isFinite(value)) return '—';
+        const rounded = Math.round(value * 10) / 10;
+        const sign = rounded > 0 ? '+' : '';
+        return Number.isInteger(rounded) ? `${sign}${rounded}` : `${sign}${rounded.toFixed(1)}`;
+    }
+
+    function updateActiveProfileMeta() {
+        if (!profileMinutesAjust || !profileDelta || !profileValidation) return;
+        const metrics = getMetrics();
+
+        if (profileOeeTarget) {
+            profileOeeTarget.textContent = Number.isFinite(metrics.oeeTarget)
+                ? `${(Math.round(metrics.oeeTarget * 10) / 10).toFixed(1)}%`
+                : '—';
+        }
+
+        if (!selectedTimeSlot) {
+            profileMinutesAjust.textContent = '—';
+            if (profileMinutesAjustHint) {
+                profileMinutesAjustHint.textContent = 'Production vs objectif';
+            }
+            if (profileMinutesCauses) {
+                profileMinutesCauses.textContent = '—';
+            }
+            if (profileMinutesReste) {
+                profileMinutesReste.textContent = '—';
+            }
+            profileDelta.textContent = '—';
+            profileDelta.classList.remove('positive', 'negative', 'neutral');
+            profileDelta.classList.add('neutral');
+            if (profileDeltaHint) {
+                profileDeltaHint.textContent = 'Cible : —';
+            }
+            if (profileOeeHour) {
+                profileOeeHour.textContent = '—';
+            }
+            profileValidation.classList.remove('ok', 'warn');
+            profileValidation.classList.add('idle');
+            profileValidation.textContent = 'En attente';
+            if (profileValidationHint) {
+                profileValidationHint.textContent = 'Sélectionnez un créneau';
+            }
+            return;
+        }
+
+        const hour = selectedTimeSlot;
+        const rawQuantity = hourQuantities?.[hour];
+        const actualQuantity = Number(rawQuantity);
+        const quantity = Number.isFinite(actualQuantity) ? actualQuantity : 0;
+
+        const closureMinutesRaw = calculateClosureMinutesForHour(hour);
+        const closureMinutes = Math.min(Math.max(closureMinutesRaw, 0), HOUR_DURATION_MINUTES);
+        const openMinutes = Math.max(0, HOUR_DURATION_MINUTES - closureMinutes);
+
+        const targetQuantity = metrics.hourlyTargetQuantity;
+        const effectiveTarget = targetQuantity > 0
+            ? targetQuantity * (openMinutes / HOUR_DURATION_MINUTES)
+            : 0;
+        const cycleMinutes = targetQuantity > 0 ? HOUR_DURATION_MINUTES / targetQuantity : 0;
+        let productiveMinutes = cycleMinutes > 0 ? quantity * cycleMinutes : 0;
+        if (productiveMinutes > openMinutes) {
+            productiveMinutes = openMinutes;
+        }
+        const minutesAjust = targetQuantity > 0 ? Math.max(0, openMinutes - productiveMinutes) : 0;
+        const minutesCauses = calculateMinutesCausesForHour(hour);
+        const reste = Math.max(0, minutesAjust - minutesCauses);
+
+        const delta = targetQuantity > 0 ? quantity - effectiveTarget : quantity;
+        const oeeHour = targetQuantity > 0 && effectiveTarget > 0
+            ? Math.max(0, Math.min((quantity / effectiveTarget) * 100, 999))
+            : (targetQuantity > 0 ? 0 : (quantity > 0 ? 100 : 0));
+
+        profileMinutesAjust.textContent = formatMinutes(minutesAjust);
+        if (profileMinutesAjustHint) {
+            profileMinutesAjustHint.textContent = openMinutes === HOUR_DURATION_MINUTES
+                ? 'Créneau de 60 min disponible'
+                : `Ouverture : ${formatMinutes(openMinutes)} min`;
+        }
+        if (profileMinutesCauses) {
+            profileMinutesCauses.textContent = formatMinutes(minutesCauses);
+        }
+        if (profileMinutesReste) {
+            profileMinutesReste.textContent = formatMinutes(reste);
+        }
+
+        profileDelta.classList.remove('positive', 'negative', 'neutral');
+        if (!Number.isFinite(delta) || Math.abs(delta) < 0.05) {
+            profileDelta.classList.add('neutral');
+        } else if (delta < 0) {
+            profileDelta.classList.add('negative');
+        } else {
+            profileDelta.classList.add('positive');
+        }
+        profileDelta.textContent = formatDeltaQuantity(delta);
+
+        if (profileDeltaHint) {
+            profileDeltaHint.textContent = targetQuantity > 0
+                ? `Cible : ${formatQuantity(effectiveTarget)} u`
+                : 'Aucune cible définie';
+        }
+
+        if (profileOeeHour) {
+            profileOeeHour.textContent = targetQuantity > 0 && effectiveTarget > 0
+                ? `${(Math.round(oeeHour * 10) / 10).toFixed(1)}%`
+                : (targetQuantity > 0 ? '0%' : '—');
+        }
+
+        const minutesGap = Number.isFinite(reste) ? reste : Infinity;
+        const deltaGap = Number.isFinite(delta) ? Math.abs(delta) : Infinity;
+        const withinMinutes = minutesGap <= metrics.minutesTolerance + 0.049;
+        const withinDelta = targetQuantity > 0
+            ? deltaGap <= metrics.quantityTolerance + 0.049
+            : true;
+
+        profileValidation.classList.remove('ok', 'warn', 'idle');
+        if (withinMinutes && withinDelta) {
+            profileValidation.classList.add('ok');
+            profileValidation.textContent = 'Prête';
+            if (profileValidationHint) {
+                profileValidationHint.textContent = 'Delta équilibré';
+            }
+        } else {
+            profileValidation.classList.add('warn');
+            profileValidation.textContent = 'Incomplète';
+            if (profileValidationHint) {
+                const issues = [];
+                if (!withinMinutes) issues.push('minutes');
+                if (!withinDelta) issues.push('delta');
+                profileValidationHint.textContent = issues.length
+                    ? `Ajuster ${issues.join(' et ')}`
+                    : 'Compléter les informations';
+            }
+        }
+    }
+
+    function getProductionStorageKey() {
+        return STORAGE_KEYS.production(currentDate, lineInput.value.trim());
+    }
+
+    function getClosureStorageKey() {
+        return STORAGE_KEYS.closures(currentDate, lineInput.value.trim());
+    }
+
+    function loadHourQuantities() {
+        try {
+            const stored = localStorage.getItem(getProductionStorageKey());
+            hourQuantities = stored ? JSON.parse(stored) || {} : {};
+        } catch (err) {
+            console.warn('Impossible de charger les quantités horaire', err);
+            hourQuantities = {};
+        }
+    }
+
+    function saveHourQuantities() {
+        const key = getProductionStorageKey();
+        if (!hourQuantities || !Object.keys(hourQuantities).length) {
+            localStorage.removeItem(key);
+            return;
+        }
+        localStorage.setItem(key, JSON.stringify(hourQuantities));
+    }
+
+    function loadClosuresFromStorage() {
+        try {
+            const stored = localStorage.getItem(getClosureStorageKey());
+            lineClosures = stored ? JSON.parse(stored) || [] : [];
+        } catch (err) {
+            console.warn('Impossible de charger les fermetures', err);
+            lineClosures = [];
+        }
+    }
+
+    function saveClosures() {
+        const key = getClosureStorageKey();
+        if (!lineClosures || !lineClosures.length) {
+            localStorage.removeItem(key);
+            return;
+        }
+        lineClosures = [...lineClosures].sort((a, b) => {
+            const startA = timeToMinutes(a.start) ?? 0;
+            const startB = timeToMinutes(b.start) ?? 0;
+            return startA - startB;
+        });
+        localStorage.setItem(key, JSON.stringify(lineClosures));
+    }
+
+    function updateQuantityInputState() {
+        if (!hourQuantityInput) {
+            updateActiveProfileMeta();
+            return;
+        }
+        if (!selectedTimeSlot) {
+            hourQuantityInput.value = '';
+            hourQuantityInput.disabled = true;
+            hourQuantityInput.placeholder = 'Sélectionnez un créneau';
+            updateActiveProfileMeta();
+            return;
+        }
+        hourQuantityInput.disabled = false;
+        const existing = hourQuantities[selectedTimeSlot];
+        hourQuantityInput.value = existing !== undefined ? existing : '';
+        hourQuantityInput.placeholder = 'Quantité produite';
+        updateActiveProfileMeta();
+    }
+
+    function updateSlotQuantityIndicator(hour) {
+        if (!timeSlotsContainer) return;
+        const slot = timeSlotsContainer.querySelector(`[data-hour="${hour}"]`);
+        if (!slot) return;
+        const quantity = hourQuantities[hour];
+        if (quantity !== undefined && quantity !== null && quantity !== '') {
+            slot.dataset.quantity = quantity;
+            const parts = [];
+            if (slot.dataset.closed === 'true') {
+                parts.push('Ligne fermée');
+            }
+            parts.push(`Quantité: ${quantity}`);
+            slot.title = parts.join(' • ');
+        } else {
+            delete slot.dataset.quantity;
+            if (slot.dataset.closed === 'true') {
+                slot.title = 'Ligne fermée';
+            } else {
+                slot.removeAttribute('title');
+            }
+        }
+    }
+
+    function renderClosures() {
+        if (!closureList) return;
+        closureList.innerHTML = '';
+        if (closureSummaryCount) {
+            const count = lineClosures.length;
+            const label =
+                count === 0
+                    ? 'Aucune fermeture enregistrée'
+                    : count === 1
+                    ? '1 fermeture enregistrée'
+                    : `${count} fermetures enregistrées`;
+            closureSummaryCount.textContent = String(count);
+            closureSummaryCount.setAttribute('aria-label', label);
+            closureSummaryCount.title = label;
+        }
+        if (!lineClosures.length) {
+            const empty = document.createElement('span');
+            empty.textContent = 'Aucune période fermée.';
+            empty.style.fontSize = '0.85rem';
+            empty.style.color = 'var(--text-secondary)';
+            closureList.appendChild(empty);
+            return;
+        }
+        lineClosures.forEach((closure) => {
+            const item = document.createElement('div');
+            item.className = 'closure-item';
+            const label = document.createElement('span');
+            label.textContent = `${closure.start} → ${closure.end}`;
+            item.appendChild(label);
+            const removeBtn = document.createElement('button');
+            removeBtn.type = 'button';
+            removeBtn.className = 'secondary';
+            removeBtn.textContent = 'Supprimer';
+            removeBtn.dataset.removeClosure = closure.id;
+            item.appendChild(removeBtn);
+            closureList.appendChild(item);
+        });
+        updateActiveProfileMeta();
+    }
+
+    function handleAddClosure() {
+        if (!closureStartInput || !closureEndInput) return;
+        const start = closureStartInput.value;
+        const end = closureEndInput.value;
+        if (!start || !end) {
+            showToast('Sélectionner un début et une fin de fermeture.');
+            return;
+        }
+        if (start === end) {
+            showToast('La période de fermeture doit être supérieure à zéro.');
+            return;
+        }
+        const newClosure = { id: generateId(), start, end };
+        lineClosures.push(newClosure);
+        saveClosures();
+        renderClosures();
+        generateTimeSlots();
+        refreshSummary();
+        closureStartInput.value = '';
+        closureEndInput.value = '';
+        showToast('Période de fermeture ajoutée.');
+    }
+
+    function showToast(message) {
+        toast.textContent = message;
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 2200);
+    }
+
+    function updateSaveStatus(saved) {
+        const now = new Date();
+        lastSaveTime.textContent = now.toTimeString().slice(0, 5);
+        saveStatusText.textContent = saved ? 'Sauvegardé en cours de journée' : 'Modifications non sauvegardées';
+    }
+
+    function updateClock() {
+        const now = new Date();
+        clockDisplay.textContent = now.toTimeString().slice(0, 5);
+
+        const minutes = now.getMinutes();
+        const seconds = now.getSeconds();
+        const remainingMinutes = 59 - minutes;
+        const remainingSeconds = 60 - seconds;
+        timeUntil.textContent = `${String(remainingMinutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`;
+    }
+
+    function getTeamById(id) {
+        return TEAM_SHIFTS.find(team => team.id === id) || TEAM_SHIFTS[0];
+    }
+
+    function getHoursForTeam(team) {
+        if (!team || team.fullDay) {
+            return Array.from({ length: 24 }, (_, index) => index);
+        }
+        const hours = [];
+        let current = team.start;
+        do {
+            hours.push(current);
+            current = (current + 1) % 24;
+        } while (current !== team.end);
+        return hours;
+    }
+
+    function populateTeamSelect() {
+        if (!teamSelect) return;
+        const previousSelection = selectedTeamId;
+        let hasPreviousSelection = false;
+        teamSelect.innerHTML = '';
+        TEAM_SHIFTS.forEach(team => {
+            const option = document.createElement('option');
+            option.value = team.id;
+            option.textContent = team.label;
+            if (team.id === previousSelection) {
+                hasPreviousSelection = true;
+            }
+            teamSelect.appendChild(option);
+        });
+        if (hasPreviousSelection) {
+            teamSelect.value = previousSelection;
+        } else {
+            teamSelect.value = TEAM_SHIFTS[0].id;
+        }
+        selectedTeamId = teamSelect.value || TEAM_SHIFTS[0].id;
+    }
+
+    function generateTimeSlots() {
+        if (!timeSlotsContainer) return;
+        timeSlotsContainer.innerHTML = '';
+        const team = getTeamById(selectedTeamId);
+        const hours = getHoursForTeam(team);
+        let selectionStillVisible = false;
+
+        hours.forEach((hour) => {
+            const startHour = String(hour).padStart(2, '0');
+            const endHour = String((hour + 1) % 24).padStart(2, '0');
+            const slotText = `${startHour}h00>${endHour}h00`;
+
+            const slot = document.createElement('button');
+            slot.type = 'button';
+            slot.className = 'time-slot';
+            slot.textContent = slotText;
+            slot.dataset.hour = startHour;
+
+            const isClosed = isHourClosed(startHour);
+            if (isClosed) {
+                slot.classList.add('closed');
+                slot.dataset.closed = 'true';
+            }
+
+            const hasEvents = events.some(e => e.heure === `${startHour}:00`);
+            if (hasEvents) {
+                slot.classList.add('filled');
+            }
+
+            const quantity = hourQuantities[startHour];
+            const titleParts = [];
+            if (isClosed) {
+                titleParts.push('Ligne fermée');
+            }
+            if (quantity !== undefined && quantity !== null && quantity !== '') {
+                slot.dataset.quantity = quantity;
+                titleParts.push(`Quantité: ${quantity}`);
+            }
+            if (titleParts.length) {
+                slot.title = titleParts.join(' • ');
+            }
+
+            if (selectedTimeSlot === startHour) {
+                slot.classList.add('active');
+                selectionStillVisible = true;
+            }
+
+            slot.addEventListener('click', () => selectTimeSlot(startHour, slot));
+            timeSlotsContainer.appendChild(slot);
+        });
+
+        if (!selectionStillVisible) {
+            selectedTimeSlot = null;
+        }
+        updateQuantityInputState();
+        updateActiveProfileMeta();
+    }
+
+    function selectTimeSlot(hour, slotElement) {
+        document.querySelectorAll('.time-slot').forEach(s => s.classList.remove('active'));
+        slotElement.classList.add('active');
+        selectedTimeSlot = hour;
+        updateQuantityInputState();
+        if (hourQuantityInput && !hourQuantityInput.disabled) {
+            hourQuantityInput.focus();
+        } else {
+            typeSelect.focus();
+        }
+    }
+
+    function loadStoredLine() {
+        const savedLine = localStorage.getItem(STORAGE_KEYS.line);
+        const initialLine = savedLine && savedLine.length ? savedLine : 'L16';
+        lineInput.value = initialLine;
+        if (sidebarLine) {
+            sidebarLine.textContent = initialLine;
+        }
+        headerLine.textContent = initialLine;
+        if (!savedLine) {
+            storeLine(initialLine);
+        }
+    }
+
+    function storeLine(value) {
+        localStorage.setItem(STORAGE_KEYS.line, value || '');
+        if (sidebarLine) {
+            sidebarLine.textContent = value;
+        }
+        headerLine.textContent = value;
+    }
+
+    function loadConfigFromStorage() {
+        const stored = localStorage.getItem(STORAGE_KEYS.config);
+        if (stored) {
+            try {
+                const parsed = JSON.parse(stored);
+                activeConfig = withConfigDefaults(parsed);
+                return;
+            } catch (e) {
+                console.warn('Config invalide en stockage, utilisation des valeurs par défaut.');
+            }
+        }
+        activeConfig = withConfigDefaults();
+    }
+
+    function persistConfig() {
+        localStorage.setItem(STORAGE_KEYS.config, JSON.stringify(activeConfig));
+    }
+
+    function populateTypeSelect() {
+        typeSelect.innerHTML = '<option value="">Choisir…</option>';
+        activeConfig.types.forEach(t => {
+            const option = document.createElement('option');
+            option.value = t.name;
+            option.textContent = t.name;
+            typeSelect.appendChild(option);
+        });
+        updateCategoryOptions();
+    }
+
+    function updateCategoryOptions() {
+        const selectedType = typeSelect.value;
+        categorySelect.innerHTML = '<option value="">Choisir…</option>';
+        const typeObj = activeConfig.types.find(t => t.name === selectedType);
+        if (typeObj) {
+            typeObj.categories.forEach(cat => {
+                const opt = document.createElement('option');
+                opt.value = cat.name;
+                opt.textContent = cat.name;
+                categorySelect.appendChild(opt);
+            });
+        }
+        updateCauseOptions();
+    }
+
+    function updateCauseOptions() {
+        const selectedType = typeSelect.value;
+        const selectedCategory = categorySelect.value;
+        causeSelect.innerHTML = '<option value="">Choisir…</option>';
+        const typeObj = activeConfig.types.find(t => t.name === selectedType);
+        const catObj = typeObj?.categories.find(c => c.name === selectedCategory);
+        if (catObj) {
+            catObj.causes.forEach(cs => {
+                const opt = document.createElement('option');
+                opt.value = cs.name;
+                opt.textContent = cs.name;
+                causeSelect.appendChild(opt);
+            });
+        }
+        updateDetailOptions();
+    }
+
+    function updateDetailOptions() {
+        const selectedType = typeSelect.value;
+        const selectedCategory = categorySelect.value;
+        const selectedCause = causeSelect.value;
+        detailSelect.innerHTML = '';
+        const typeObj = activeConfig.types.find(t => t.name === selectedType);
+        const catObj = typeObj?.categories.find(c => c.name === selectedCategory);
+        const causeObj = catObj?.causes.find(c => c.name === selectedCause);
+        const details = causeObj?.details?.length ? causeObj.details : ['*'];
+        details.forEach(detail => {
+            const opt = document.createElement('option');
+            opt.value = detail;
+            opt.textContent = detail;
+            detailSelect.appendChild(opt);
+        });
+    }
+
+    function getRuleForSelection() {
+        const selectedType = typeSelect.value;
+        const selectedCategory = categorySelect.value;
+        const selectedCause = causeSelect.value;
+        if (!selectedType) return { requires: [], optional: [] };
+        const rule = activeConfig.rules.find(rule => {
+            const when = rule.when || {};
+            const matchesType = !when.type || when.type === selectedType;
+            const matchesCategory = !when.categorie || when.categorie === selectedCategory;
+            const matchesCause = !when.cause || when.cause === selectedCause;
+            return matchesType && matchesCategory && matchesCause;
+        });
+        return rule || { requires: [], optional: [] };
+    }
+
+    function buildDynamicFields() {
+        dynamicFieldsContainer.innerHTML = '';
+        const { requires, optional } = getRuleForSelection();
+        const fieldsToRender = [...new Set([...(requires || []), ...(optional || [])])];
+        fieldsToRender.forEach(fieldName => {
+            const def = FIELD_DEFS[fieldName];
+            if (!def) return;
+            const wrapper = document.createElement('label');
+            wrapper.dataset.field = fieldName;
+            wrapper.style.gridColumn = 'auto';
+            wrapper.innerHTML = `${def.label}<span></span>`;
+            const labelSpan = wrapper.querySelector('span');
+            labelSpan.style.display = 'flex';
+            labelSpan.style.flexDirection = 'column';
+            labelSpan.style.gap = '0.4rem';
+            labelSpan.style.marginTop = '0.4rem';
+            let inputEl;
+            if (def.type === 'select') {
+                inputEl = document.createElement('select');
+            } else if (def.type === 'text') {
+                inputEl = document.createElement('input');
+                inputEl.type = 'text';
+                if (def.placeholder) inputEl.placeholder = def.placeholder;
+            }
+            inputEl.id = fieldName;
+            inputEl.name = fieldName;
+            if (requires?.includes(fieldName)) {
+                inputEl.required = true;
+                wrapper.classList.add('required');
+            }
+            if (fieldName === 'equipement') {
+                populateEquipmentOptions(inputEl);
+                inputEl.addEventListener('change', () => populateSubsetOptions(document.getElementById('sous_ensemble'), inputEl.value));
+            }
+            if (fieldName === 'sous_ensemble') {
+                populateSubsetOptions(inputEl, document.getElementById('equipement')?.value);
+            }
+            labelSpan.appendChild(inputEl);
+            dynamicFieldsContainer.appendChild(wrapper);
+        });
+        manageSubsetVisibility();
+    }
+
+    function populateEquipmentOptions(selectEl) {
+        selectEl.innerHTML = '<option value="">Choisir…</option>';
+        activeConfig.assets.forEach(asset => {
+            const opt = document.createElement('option');
+            opt.value = asset.code;
+            opt.textContent = `${asset.label} (${asset.code})`;
+            selectEl.appendChild(opt);
+        });
+    }
+
+    function populateSubsetOptions(selectEl, equipmentCode) {
+        if (!selectEl) return;
+        selectEl.innerHTML = '<option value="">Choisir…</option>';
+        const asset = activeConfig.assets.find(a => a.code === equipmentCode);
+        const subsets = asset?.subsets || [];
+        subsets.forEach(sub => {
+            const opt = document.createElement('option');
+            opt.value = sub.slug;
+            opt.textContent = sub.label;
+            selectEl.appendChild(opt);
+        });
+    }
+
+    function manageSubsetVisibility() {
+        const eqField = document.getElementById('equipement');
+        const subField = document.getElementById('sous_ensemble')?.closest('label');
+        if (!eqField || !subField) return;
+        subField.style.display = eqField.value ? 'flex' : 'none';
+    }
+
+    function calculateEndTime(startTime, durationMinutes) {
+        if (!startTime || !Number.isFinite(durationMinutes)) {
+            return '';
+        }
+        const [hours, minutes] = startTime.split(':').map(Number);
+        if (Number.isNaN(hours) || Number.isNaN(minutes)) {
+            return '';
+        }
+        const safeDuration = Math.round(durationMinutes);
+        const totalMinutes = (hours * 60 + minutes + safeDuration) % (24 * 60);
+        const normalized = totalMinutes < 0 ? totalMinutes + 24 * 60 : totalMinutes;
+        const endHours = Math.floor(normalized / 60);
+        const endMinutes = normalized % 60;
+        return `${String(endHours).padStart(2, '0')}:${String(endMinutes).padStart(2, '0')}`;
+    }
+
+    function getEventStorageKey() {
+        return STORAGE_KEYS.day(currentDate, lineInput.value.trim());
+    }
+
+    function saveEvents() {
+        localStorage.setItem(getEventStorageKey(), JSON.stringify(events));
+        updateSaveStatus(true);
+    }
+
+    function loadEventsFromStorage() {
+        const stored = localStorage.getItem(getEventStorageKey());
+        if (stored) {
+            try {
+                events = JSON.parse(stored) || [];
+            } catch (e) {
+                events = [];
+            }
+        } else {
+            events = generateSampleEvents();
+            saveEvents();
+        }
+        additionHistory = events.map(event => event.id);
+        renderEvents();
+        refreshSummary();
+        syncSequenceCounters();
+        generateTimeSlots();
+        updateSaveStatus(true);
+    }
+
+    function resetSequenceCounters() {
+        activeConfig.assets.forEach(asset => {
+            localStorage.removeItem(STORAGE_KEYS.seq(currentDate, lineInput.value.trim(), asset.code));
+        });
+        localStorage.removeItem(STORAGE_KEYS.seq(currentDate, lineInput.value.trim(), 'NA'));
+    }
+
+    function generateSampleEvents() {
+        const line = lineInput.value.trim() || 'L16';
+        const base = [
+            { type: 'Panne', categorie: 'Mécanique', cause: 'Rupture composant', detail: 'Casse engrenage', equipement: 'REMPL', sous_ensemble: 'conv' },
+            { type: 'Panne', categorie: 'Électrique', cause: 'Automatisme', detail: 'API défaut', equipement: 'REMPL', sous_ensemble: 'dos' },
+            { type: 'Réglage', categorie: 'Calage format', cause: 'Réglage standard', detail: 'Hauteur buse', equipement: 'REMPL', sous_ensemble: 'cuve' },
+            { type: 'Changement de format', categorie: 'Préparatif', cause: 'Montage outillage', detail: 'Jeu 50cl', equipement: 'REMPL', sous_ensemble: 'conv' },
+            { type: 'Défaut en cours', categorie: 'Qualité', cause: 'Aspect', detail: 'Étiquette pliée', equipement: 'MIRG', sous_ensemble: 'cam' }
+        ];
+        const counters = {};
+        return base.map((item, idx) => {
+            const hour = String(7 + idx).padStart(2, '0');
+            const start = `${hour}:00`;
+            const end = `${hour}:20`;
+            const duration = 20;
+            const eqKey = item.equipement || 'NA';
+            counters[eqKey] = (counters[eqKey] || 0) + 1;
+            const detail_code = buildDetailCode(item.type, item.equipement, item.sous_ensemble, counters[eqKey]);
+            return {
+                id: generateId(),
+                detail_code,
+                date: currentDate,
+                line,
+                type: item.type,
+                categorie: item.categorie,
+                cause: item.cause,
+                detail: item.detail,
+                heure: `${hour}:00`,
+                debut: start,
+                fin: end,
+                duree_min: duration,
+                equipement: item.equipement,
+                sous_ensemble: item.sous_ensemble,
+                article: '',
+                lot: '',
+                type_defaut: '',
+                raison_cadence: '',
+                zone: '',
+                utilite: '',
+                commentaire: ''
+            };
+        });
+    }
+
+    function buildDetailCode(type, equipementCode, subsetSlug, forceIndex = null) {
+        const prefix = activeConfig.prefix_map[type] || 'EVT';
+        const eq = equipementCode || 'NA';
+        const sub = subsetSlug || 'NA';
+        if (forceIndex) {
+            return `${prefix}-${eq}-${sub}-${String(forceIndex).padStart(2, '0')}`;
+        }
+        const seqKey = STORAGE_KEYS.seq(currentDate, lineInput.value.trim(), eq);
+        const currentValue = parseInt(localStorage.getItem(seqKey) || '0', 10) || 0;
+        const next = currentValue + 1;
+        localStorage.setItem(seqKey, String(next));
+        return `${prefix}-${eq}-${sub}-${String(next).padStart(2, '0')}`;
+    }
+
+    function formDataToEvent() {
+        const data = new FormData(form);
+        const { requires } = getRuleForSelection();
+        for (const req of requires) {
+            const value = data.get(req);
+            if (!value) {
+                throw new Error(`Champ obligatoire manquant: ${FIELD_DEFS[req]?.label || req}`);
+            }
+        }
+        const hourValue = selectedTimeSlot ? `${selectedTimeSlot}:00` : '';
+        if (!hourValue) {
+            throw new Error('Veuillez sélectionner un créneau horaire.');
+        }
+        const duree = Number(durationInput.value || 0);
+        if (!Number.isFinite(duree) || duree <= 0) {
+            throw new Error('Durée invalide. Saisir une valeur positive.');
+        }
+        if (!Number.isInteger(duree)) {
+            throw new Error('La durée doit être exprimée en minutes entières.');
+        }
+        const start = hourValue;
+        const end = calculateEndTime(start, duree);
+        const equipement = data.get('equipement') || '';
+        const sous_ensemble = data.get('sous_ensemble') || '';
+        const previous = editingId ? events.find(e => e.id === editingId) : null;
+        const event = {
+            id: editingId || generateId(),
+            detail_code: editingId
+                ? ((previous && (previous.type !== data.get('type') || previous.equipement !== equipement || previous.sous_ensemble !== sous_ensemble))
+                    ? buildDetailCode(data.get('type'), equipement, sous_ensemble)
+                    : previous?.detail_code)
+                : buildDetailCode(data.get('type'), equipement, sous_ensemble),
+            date: currentDate,
+            line: lineInput.value.trim(),
+            type: data.get('type'),
+            categorie: data.get('category'),
+            cause: data.get('cause'),
+            detail: data.get('detail'),
+            heure: hourValue,
+            debut: start,
+            fin: end,
+            duree_min: duree,
+            equipement,
+            sous_ensemble,
+            article: data.get('article') || '',
+            lot: data.get('lot') || '',
+            type_defaut: data.get('type_defaut') || '',
+            raison_cadence: data.get('raison_cadence') || '',
+            zone: data.get('zone') || '',
+            utilite: data.get('utilite') || '',
+            commentaire: data.get('commentaire') || ''
+        };
+        return event;
+    }
+
+    function syncSequenceCounters() {
+        const seqPerEq = {};
+        events.forEach(event => {
+            const eq = event.equipement || 'NA';
+            const segments = event.detail_code?.split('-');
+            const last = segments?.[segments.length - 1];
+            const nn = last ? parseInt(last, 10) : 0;
+            if (!Number.isNaN(nn)) {
+                seqPerEq[eq] = Math.max(seqPerEq[eq] || 0, nn);
+            }
+        });
+        Object.entries(seqPerEq).forEach(([eq, value]) => {
+            const key = STORAGE_KEYS.seq(currentDate, lineInput.value.trim(), eq === 'NA' ? '' : eq);
+            localStorage.setItem(key, String(value));
+        });
+    }
+
+    function renderEvents() {
+        eventTableBody.innerHTML = '';
+        const sortedEvents = [...events].sort((a, b) => a.debut.localeCompare(b.debut));
+        sortedEvents.forEach(event => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${event.heure}</td>
+                <td>${event.type}</td>
+                <td>${event.categorie}</td>
+                <td>${event.cause}</td>
+                <td>${event.detail}</td>
+                <td>${event.duree_min}</td>
+                <td>${formatEquipment(event)}</td>
+                <td>${event.article || '-'}</td>
+                <td>${event.lot || '-'}</td>
+                <td>${event.commentaire || '-'}</td>
+                <td>
+                    <div class="table-actions">
+                        <button type="button" class="secondary" data-edit="${event.id}">Éditer</button>
+                        <button type="button" class="danger" data-delete="${event.id}">Suppr.</button>
+                    </div>
+                </td>`;
+            eventTableBody.appendChild(tr);
+        });
+        generateTimeSlots();
+    }
+
+    function formatEquipment(event) {
+        if (!event.equipement) return '-';
+        const asset = activeConfig.assets.find(a => a.code === event.equipement);
+        const eqLabel = asset ? asset.label : event.equipement;
+        const subset = asset?.subsets?.find(s => s.slug === event.sous_ensemble);
+        return subset ? `${eqLabel} / ${subset.label}` : eqLabel;
+    }
+
+    function refreshSummary() {
+        const metrics = getMetrics();
+        const totalQuantity = Object.values(hourQuantities || {}).reduce((acc, value) => {
+            const numeric = Number(value);
+            return Number.isFinite(numeric) ? acc + numeric : acc;
+        }, 0);
+        const downtimeMinutes = events.reduce((acc, curr) => acc + Number(curr.duree_min || 0), 0);
+        const closureMinutes = (lineClosures || []).reduce((acc, closure) => acc + calculateClosureDuration(closure), 0);
+        const scheduledMinutes = 24 * 60;
+        const effectiveClosure = Math.min(Math.max(closureMinutes, 0), scheduledMinutes);
+        const openMinutes = Math.max(0, scheduledMinutes - effectiveClosure);
+        const cappedDowntime = Math.min(Math.max(downtimeMinutes, 0), openMinutes);
+
+        const targetQuantity = metrics.hourlyTargetQuantity > 0
+            ? metrics.hourlyTargetQuantity * (openMinutes / HOUR_DURATION_MINUTES)
+            : 0;
+        const cycleMinutes = metrics.hourlyTargetQuantity > 0
+            ? HOUR_DURATION_MINUTES / metrics.hourlyTargetQuantity
+            : 0;
+
+        const availableForPerformance = Math.max(0, openMinutes - cappedDowntime);
+
+        let performanceLossMinutes = 0;
+        if (cycleMinutes > 0 && targetQuantity > totalQuantity) {
+            const missingQuantity = targetQuantity - totalQuantity;
+            performanceLossMinutes = Math.min(availableForPerformance, missingQuantity * cycleMinutes);
+        }
+        const productiveMinutes = Math.max(0, availableForPerformance - performanceLossMinutes);
+
+        const availability = openMinutes > 0
+            ? Math.max(0, Math.min((openMinutes - cappedDowntime) / openMinutes, 1))
+            : 0;
+        const performance = (productiveMinutes + performanceLossMinutes) > 0
+            ? Math.max(0, Math.min(productiveMinutes / (productiveMinutes + performanceLossMinutes), 1))
+            : (productiveMinutes > 0 ? 1 : 0);
+        const quality = 1;
+
+        let oeeValue = availability * performance * quality * 100;
+        if (!Number.isFinite(oeeValue)) {
+            oeeValue = 0;
+        }
+        oeeValue = Math.max(0, Math.min(oeeValue, 100));
+
+        if (summaryProduction) {
+            summaryProduction.textContent = `${FR_NUMBER.format(Math.round(totalQuantity))}\u00a0u`;
+        }
+        if (summaryDowntime) {
+            summaryDowntime.textContent = `${FR_NUMBER.format(Math.round(downtimeMinutes))}\u00a0min`;
+        }
+        if (summaryOee) {
+            summaryOee.textContent = `${oeeValue.toLocaleString('fr-FR', {
+                minimumFractionDigits: 1,
+                maximumFractionDigits: 1
+            })}\u00a0%`;
+        }
+
+        const baseMinutes = productiveMinutes + performanceLossMinutes + cappedDowntime;
+        let dPercent = 0;
+        let pPercent = 0;
+        let qPercent = 0;
+        if (baseMinutes > 0) {
+            dPercent = Math.round((cappedDowntime / baseMinutes) * 100);
+            pPercent = Math.round((performanceLossMinutes / baseMinutes) * 100);
+            qPercent = Math.round((productiveMinutes / baseMinutes) * 100);
+            let diff = 100 - (dPercent + pPercent + qPercent);
+            if (diff !== 0) {
+                if (diff > 0) {
+                    qPercent = Math.min(100, qPercent + diff);
+                } else {
+                    const values = [dPercent, pPercent, qPercent];
+                    const maxIndex = values.indexOf(Math.max(...values));
+                    if (maxIndex === 0) {
+                        dPercent = Math.max(0, dPercent + diff);
+                    } else if (maxIndex === 1) {
+                        pPercent = Math.max(0, pPercent + diff);
+                    } else {
+                        qPercent = Math.max(0, qPercent + diff);
+                    }
+                }
+            }
+        } else {
+            qPercent = 100;
+        }
+
+        if (summarySplitText) {
+            summarySplitText.textContent = `${dPercent.toLocaleString('fr-FR')}\u00a0% · ${pPercent.toLocaleString('fr-FR')}\u00a0% · ${qPercent.toLocaleString('fr-FR')}\u00a0%`;
+        }
+        if (summarySplitD) {
+            summarySplitD.style.width = `${dPercent}%`;
+            summarySplitD.title = `Disponibilité : ${dPercent}%`;
+        }
+        if (summarySplitP) {
+            summarySplitP.style.width = `${pPercent}%`;
+            summarySplitP.title = `Performance : ${pPercent}%`;
+        }
+        if (summarySplitQ) {
+            summarySplitQ.style.width = `${qPercent}%`;
+            summarySplitQ.title = `Qualité : ${qPercent}%`;
+        }
+
+        updateActiveProfileMeta();
+    }
+
+    function resetForm(preserveType = false) {
+        const previousType = typeSelect.value;
+        form.reset();
+        durationInput.value = '';
+        if (preserveType && previousType) {
+            typeSelect.value = previousType;
+        }
+        editingId = null;
+        submitBtn.textContent = 'Ajouter';
+        updateSaveStatus(false);
+        updateQuantityInputState();
+        typeSelect.focus();
+    }
+
+    function exportCsv() {
+        if (!events.length) {
+            showToast('Aucun événement à exporter.');
+            return;
+        }
+        const columns = activeConfig.export.csv_columns;
+        const lines = [columns.join(';')];
+        events.forEach(event => {
+            const row = columns.map(col => formatCsvValue(event[col] ?? ''));
+            lines.push(row.join(';'));
+        });
+        downloadFile(lines.join('\n'), replaceTokens(activeConfig.export.filename, 'csv'), 'text/csv');
+    }
+
+    function formatCsvValue(value) {
+        if (typeof value === 'string' && value.includes(';')) {
+            return '"' + value.replace(/"/g, '""') + '"';
+        }
+        return value;
+    }
+
+    function exportJson() {
+        if (!events.length) {
+            showToast('Aucun événement à exporter.');
+            return;
+        }
+        const payload = {
+            version: activeConfig.version,
+            date: currentDate,
+            line: lineInput.value.trim(),
+            events
+        };
+        downloadFile(JSON.stringify(payload, null, 2), replaceTokens(activeConfig.export.filename, 'json'), 'application/json');
+    }
+
+    function replaceTokens(filenameTemplate, extension) {
+        const safeLine = (lineInput.value.trim() || 'sans-ligne').replace(/\s+/g, '-');
+        return filenameTemplate
+            .replace('{DATE}', currentDate)
+            .replace('{LINE}', safeLine)
+            + '.' + extension;
+    }
+
+    function downloadFile(content, filename, mime) {
+        const blob = new Blob([content], { type: mime });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast('Export généré.');
+    }
+
+    function onEditEvent(id) {
+        const event = events.find(ev => ev.id === id);
+        if (!event) return;
+        editingId = id;
+        submitBtn.textContent = 'Mettre à jour';
+        lineInput.value = event.line;
+        storeLine(event.line);
+        typeSelect.value = event.type;
+        updateCategoryOptions();
+        categorySelect.value = event.categorie;
+        updateCauseOptions();
+        causeSelect.value = event.cause;
+        updateDetailOptions();
+        detailSelect.value = event.detail;
+        buildDynamicFields();
+        durationInput.value = event.duree_min;
+        form.commentaire.value = event.commentaire || '';
+        Object.keys(FIELD_DEFS).forEach(field => {
+            const input = document.getElementById(field);
+            if (input) {
+                input.value = event[field] || '';
+            }
+        });
+        manageSubsetVisibility();
+        updateSaveStatus(false);
+        selectedTimeSlot = event.heure ? event.heure.slice(0, 2) : null;
+        generateTimeSlots();
+        updateQuantityInputState();
+        typeSelect.focus();
+    }
+
+    function onDeleteEvent(id) {
+        events = events.filter(ev => ev.id !== id);
+        additionHistory = additionHistory.filter(historyId => historyId !== id);
+        saveEvents();
+        renderEvents();
+        refreshSummary();
+        syncSequenceCounters();
+        generateTimeSlots();
+        showToast('Événement supprimé.');
+    }
+
+    function attachEventListeners() {
+        if (sidebarToggleBtn) {
+            sidebarToggleBtn.addEventListener('click', toggleSidebar);
+        }
+        typeSelect.addEventListener('change', () => {
+            updateCategoryOptions();
+            buildDynamicFields();
+            updateSaveStatus(false);
+        });
+        categorySelect.addEventListener('change', () => {
+            updateCauseOptions();
+            buildDynamicFields();
+            updateSaveStatus(false);
+        });
+        causeSelect.addEventListener('change', () => {
+            updateDetailOptions();
+            buildDynamicFields();
+            updateSaveStatus(false);
+        });
+        form.addEventListener('input', () => updateSaveStatus(false));
+        dynamicFieldsContainer.addEventListener('change', (e) => {
+            if (e.target.id === 'equipement') {
+                populateSubsetOptions(document.getElementById('sous_ensemble'), e.target.value);
+                manageSubsetVisibility();
+            }
+        });
+        if (hourQuantityInput) {
+            hourQuantityInput.addEventListener('change', () => {
+                if (!selectedTimeSlot) {
+                    showToast('Sélectionner un créneau horaire.');
+                    hourQuantityInput.value = '';
+                    return;
+                }
+                const rawValue = hourQuantityInput.value;
+                if (rawValue === '') {
+                    delete hourQuantities[selectedTimeSlot];
+                    saveHourQuantities();
+                    updateSlotQuantityIndicator(selectedTimeSlot);
+                    refreshSummary();
+                    return;
+                }
+                const numeric = Number(rawValue);
+                if (!Number.isFinite(numeric) || numeric < 0 || !Number.isInteger(numeric)) {
+                    showToast('Quantité invalide. Saisir un entier positif.');
+                    hourQuantityInput.value = hourQuantities[selectedTimeSlot] ?? '';
+                    return;
+                }
+                hourQuantities[selectedTimeSlot] = numeric;
+                saveHourQuantities();
+                updateSlotQuantityIndicator(selectedTimeSlot);
+                refreshSummary();
+            });
+        }
+        if (teamSelect) {
+            teamSelect.addEventListener('change', () => {
+                selectedTeamId = teamSelect.value;
+                selectedTimeSlot = null;
+                generateTimeSlots();
+                updateQuantityInputState();
+            });
+        }
+        if (addClosureBtn) {
+            addClosureBtn.addEventListener('click', handleAddClosure);
+        }
+        if (closureList) {
+            closureList.addEventListener('click', (e) => {
+                const trigger = e.target.closest('[data-remove-closure]');
+                if (!trigger) return;
+                const closureId = trigger.dataset.removeClosure;
+                const initialLength = lineClosures.length;
+                lineClosures = lineClosures.filter(closure => closure.id !== closureId);
+                if (lineClosures.length === initialLength) return;
+                saveClosures();
+                renderClosures();
+                generateTimeSlots();
+                refreshSummary();
+                updateQuantityInputState();
+                showToast('Période de fermeture supprimée.');
+            });
+        }
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            try {
+                const newEvent = formDataToEvent();
+                if (editingId) {
+                    const idx = events.findIndex(ev => ev.id === editingId);
+                    events[idx] = newEvent;
+                } else {
+                    events.push(newEvent);
+                    additionHistory.push(newEvent.id);
+                }
+                saveEvents();
+                renderEvents();
+                refreshSummary();
+                syncSequenceCounters();
+                generateTimeSlots();
+                updateQuantityInputState();
+                showToast(editingId ? 'Événement mis à jour.' : 'Événement ajouté.');
+                editingId = null;
+                submitBtn.textContent = 'Ajouter';
+                form.reset();
+                durationInput.value = '';
+                buildDynamicFields();
+                updateQuantityInputState();
+                typeSelect.focus();
+            } catch (err) {
+                showToast(err.message);
+            }
+        });
+        if (undoLastBtn) {
+            undoLastBtn.addEventListener('click', () => {
+                let removedId = null;
+                while (additionHistory.length && !removedId) {
+                    const candidate = additionHistory.pop();
+                    const idx = events.findIndex(ev => ev.id === candidate);
+                    if (idx !== -1) {
+                        removedId = candidate;
+                        events.splice(idx, 1);
+                    }
+                }
+                if (!removedId && events.length) {
+                    const removed = events.pop();
+                    removedId = removed?.id || null;
+                }
+                if (!removedId) {
+                    showToast('Aucun événement à annuler.');
+                    return;
+                }
+                saveEvents();
+                renderEvents();
+                refreshSummary();
+                syncSequenceCounters();
+                generateTimeSlots();
+                updateQuantityInputState();
+                showToast('Dernière saisie annulée.');
+            });
+        }
+        lineInput.addEventListener('change', () => {
+            storeLine(lineInput.value.trim());
+            form.reset();
+            durationInput.value = '';
+            buildDynamicFields();
+            editingId = null;
+            submitBtn.textContent = 'Ajouter';
+            selectedTimeSlot = null;
+            loadHourQuantities();
+            loadClosuresFromStorage();
+            loadEventsFromStorage();
+            renderClosures();
+            updateQuantityInputState();
+        });
+        eventTableBody.addEventListener('click', (e) => {
+            const editId = e.target.dataset.edit;
+            const deleteId = e.target.dataset.delete;
+            if (editId) {
+                onEditEvent(editId);
+            }
+            if (deleteId) {
+                if (confirm('Supprimer cet événement ?')) {
+                    onDeleteEvent(deleteId);
+                }
+            }
+        });
+        if (configFileInput) {
+            configFileInput.addEventListener('change', handleConfigUpload);
+        }
+        
+        newDayBtn.addEventListener('click', () => {
+            if (confirm('Créer une nouvelle journée ?')) {
+                events = [];
+                additionHistory = [];
+                hourQuantities = {};
+                lineClosures = [];
+                resetSequenceCounters();
+                saveEvents();
+                saveHourQuantities();
+                saveClosures();
+                renderEvents();
+                renderClosures();
+                refreshSummary();
+                generateTimeSlots();
+                updateQuantityInputState();
+                showToast('Nouvelle journée créée.');
+            }
+        });
+        
+        closeDayBtn.addEventListener('click', () => {
+            if (confirm('Clôturer la journée ? Les données seront archivées.')) {
+                saveEvents();
+                showToast('Journée clôturée avec succès.');
+            }
+        });
+        
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 's' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                submitBtn.click();
+            }
+        });
+    }
+
+    function handleConfigUpload(event) {
+        const file = event.target.files?.[0];
+        if (!file) return;
+        if (file.name !== 'config_evenements.json') {
+            showToast('Nom de fichier inattendu.');
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const parsed = JSON.parse(e.target.result);
+                if (!parsed.types || !parsed.rules || !parsed.assets) {
+                    throw new Error('Structure incomplète.');
+                }
+                activeConfig = withConfigDefaults(parsed);
+                persistConfig();
+                populateTypeSelect();
+                buildDynamicFields();
+                updateActiveProfileMeta();
+                showToast('Configuration chargée.');
+            } catch (err) {
+                console.warn(err);
+                showToast('Configuration invalide.');
+            }
+        };
+        reader.readAsText(file);
+        event.target.value = '';
+    }
+
+    function initialize() {
+        loadSidebarState();
+        loadStoredLine();
+        loadConfigFromStorage();
+        persistConfig();
+        populateTypeSelect();
+        buildDynamicFields();
+        populateTeamSelect();
+        loadHourQuantities();
+        loadClosuresFromStorage();
+        loadEventsFromStorage();
+        renderClosures();
+        attachEventListeners();
+        generateTimeSlots();
+        updateQuantityInputState();
+        updateClock();
+        setInterval(updateClock, 1000);
+        typeSelect.focus();
+    }
+
+    initialize();
+})();
+</script>
+</body>
+</html>
