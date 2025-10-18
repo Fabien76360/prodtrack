@@ -1243,6 +1243,54 @@
     <section id="page-histo" role="region" aria-label="Historique de saisie" style="display:none; padding:16px;">
       <h2>Historique de saisie</h2>
       <div id="histo-events-host"></div>
+      <div id="histo-toolbar" style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0;">
+        <input type="date" id="hf-from" aria-label="Du">
+        <input type="date" id="hf-to" aria-label="Au">
+        <input type="text" id="hf-line" placeholder="Ligne" aria-label="Ligne" style="min-width:120px;">
+        <input type="text" id="hf-type" placeholder="Type" aria-label="Type" style="min-width:120px;">
+        <input type="text" id="hf-cat" placeholder="Catégorie" aria-label="Catégorie" style="min-width:120px;">
+        <input type="search" id="hf-q" placeholder="Recherche…" aria-label="Recherche" style="flex:1;min-width:220px;">
+        <button id="hf-refresh" type="button">Actualiser</button>
+        <button id="hf-export"  type="button">Export CSV</button>
+      </div>
+
+      <div id="histo-kpis" style="display:grid;grid-template-columns:repeat(4,minmax(120px,1fr));gap:8px;margin:6px 0;">
+        <div class="kpi"><div style="font-size:12px;opacity:.7;">Événements</div><div id="kpi-count" style="font-weight:600;font-size:18px;">0</div></div>
+        <div class="kpi"><div style="font-size:12px;opacity:.7;">Minutes perdues</div><div id="kpi-min" style="font-weight:600;font-size:18px;">0</div></div>
+        <div class="kpi"><div style="font-size:12px;opacity:.7;">Quantité</div><div id="kpi-qty" style="font-weight:600;font-size:18px;">0</div></div>
+        <div class="kpi"><div style="font-size:12px;opacity:.7;">Top cause %</div><div id="kpi-top" style="font-weight:600;font-size:18px;">0%</div></div>
+      </div>
+
+      <div style="overflow:auto;max-height:60vh;border:1px solid rgba(0,0,0,.1);border-radius:8px;">
+        <table id="histo-table" style="width:100%;border-collapse:collapse;">
+          <thead>
+            <tr>
+              <th data-key="date">Date</th>
+              <th data-key="hour">Heure</th>
+              <th data-key="line">Ligne</th>
+              <th data-key="type">Type</th>
+              <th data-key="cat">Catégorie</th>
+              <th data-key="cause">Cause</th>
+              <th data-key="detail">Détail</th>
+              <th data-key="durqty">Durée/Qté</th>
+              <th data-key="oper">Opérateur</th>
+              <th data-key="comm">Commentaire</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div id="histo-pagebar" style="display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-top:6px;">
+        <button id="pg-prev" type="button">◀</button>
+        <span id="pg-info" style="font-size:12px;opacity:.7;">0–0/0</span>
+        <button id="pg-next" type="button">▶</button>
+        <select id="pg-size" aria-label="Taille page">
+          <option>50</option><option>100</option><option>200</option>
+        </select>
+      </div>
+
+      <p id="histo-empty" style="display:none;opacity:.7;margin-top:6px;">Aucune donnée pour ces filtres.</p>
       <button id="btn-back-from-histo" type="button">Retour</button>
     </section>
 
@@ -2942,6 +2990,333 @@
     }
 
     initialize();
+})();
+</script>
+<script>
+(function(){
+  try{
+    var histoSection = document.getElementById('page-histo');
+    if(!histoSection) return;
+
+    var $ = function(id){ return document.getElementById(id); };
+    var qs = function(sel, ctx){ return (ctx || document).querySelector(sel); };
+    var qsa = function(sel, ctx){ return Array.from((ctx || document).querySelectorAll(sel)); };
+    var parse = function(str){ try { return JSON.parse(str); } catch(e){ return null; } };
+    var pick = function(obj, keys){ for(var i=0;i<keys.length;i++){ if(obj && obj[keys[i]] != null) return obj[keys[i]]; } return ''; };
+    var iso = function(v){ if(!v) return ''; if(typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) return v; try { return new Date(v).toISOString().slice(0,10); } catch(e){ return ''; } };
+    var txt = function(v){ return (v == null ? '' : String(v)).trim(); };
+
+    function loadRaw(){
+      var keys = ['prodtrack_events','prodtrack_saisies','events','saisies'];
+      for(var i=0;i<keys.length;i++){
+        var stored = localStorage.getItem(keys[i]);
+        if(stored){
+          var arr = parse(stored);
+          if(Array.isArray(arr)) return arr;
+        }
+      }
+      var node = $('prodtrack-data');
+      if(node && node.textContent){
+        var parsed = parse(node.textContent);
+        if(Array.isArray(parsed)) return parsed;
+      }
+      return [];
+    }
+
+    function normalize(rows){
+      return rows.map(function(r){
+        var date = pick(r,['date','jour','day']);
+        var hour = pick(r,['hour','heure','time']);
+        var line = pick(r,['line','ligne']);
+        var type = pick(r,['type']);
+        var cat = pick(r,['category','categorie','cat']);
+        var cause = pick(r,['cause']);
+        var detail = pick(r,['detail','détail','detaille']);
+        var qty = pick(r,['qty','good','quantity','quantite','quantité','minutes','duree']);
+        var oper = pick(r,['operator','operateur','op']);
+        var comm = pick(r,['comment','commentaire','notes']);
+        var dISO = iso(date) || (r && r.timestamp ? iso(r.timestamp) : '');
+        return {
+          date: dISO,
+          hour: txt(hour),
+          line: txt(line),
+          type: txt(type),
+          cat: txt(cat),
+          cause: txt(cause),
+          detail: txt(detail),
+          durqty: txt(qty),
+          oper: txt(oper),
+          comm: txt(comm)
+        };
+      });
+    }
+
+    var ALL = normalize(loadRaw());
+
+    var state = {
+      from: '',
+      to: '',
+      line: '',
+      type: '',
+      cat: '',
+      q: '',
+      sortKey: 'date',
+      sortDir: -1,
+      page: 1,
+      size: 50
+    };
+
+    var el = {
+      from: $('hf-from'),
+      to: $('hf-to'),
+      line: $('hf-line'),
+      type: $('hf-type'),
+      cat: $('hf-cat'),
+      q: $('hf-q'),
+      refresh: $('hf-refresh'),
+      exportBtn: $('hf-export'),
+      table: $('histo-table'),
+      tbody: qs('#histo-table tbody'),
+      kCount: $('kpi-count'),
+      kMin: $('kpi-min'),
+      kQty: $('kpi-qty'),
+      kTop: $('kpi-top'),
+      prev: $('pg-prev'),
+      next: $('pg-next'),
+      info: $('pg-info'),
+      sizeSel: $('pg-size'),
+      empty: $('histo-empty')
+    };
+
+    if(!el.table || !el.tbody) return;
+
+    ['from','to','line','type','cat','q'].forEach(function(key){
+      var node = el[key];
+      if(node && node.value){
+        state[key] = node.value.trim();
+      }
+    });
+
+    if(el.sizeSel){
+      var initialSize = parseInt(el.sizeSel.value, 10);
+      if(!isNaN(initialSize) && initialSize > 0){
+        state.size = initialSize;
+      }
+    }
+
+    function applyFilters(rows){
+      return rows.filter(function(r){
+        if(state.from && r.date < state.from) return false;
+        if(state.to && r.date > state.to) return false;
+        if(state.line && r.line.toLowerCase().indexOf(state.line.toLowerCase()) === -1) return false;
+        if(state.type && r.type.toLowerCase().indexOf(state.type.toLowerCase()) === -1) return false;
+        if(state.cat && r.cat.toLowerCase().indexOf(state.cat.toLowerCase()) === -1) return false;
+        if(state.q){
+          var hay = (r.date + ' ' + r.hour + ' ' + r.line + ' ' + r.type + ' ' + r.cat + ' ' + r.cause + ' ' + r.detail + ' ' + r.durqty + ' ' + r.oper + ' ' + r.comm).toLowerCase();
+          if(hay.indexOf(state.q.toLowerCase()) === -1) return false;
+        }
+        return true;
+      });
+    }
+
+    function sortRows(rows){
+      var k = state.sortKey;
+      var dir = state.sortDir;
+      return rows.slice().sort(function(a,b){
+        var A = a[k] || '';
+        var B = b[k] || '';
+        if(A < B) return -1 * dir;
+        if(A > B) return 1 * dir;
+        return 0;
+      });
+    }
+
+    function computeKPIs(rows){
+      var n = rows.length;
+      var minutes = 0;
+      var qty = 0;
+      var countByCause = {};
+      rows.forEach(function(r){
+        var raw = (r.durqty || '').replace(',', '.');
+        var val = parseFloat(raw);
+        if(!isNaN(val)){
+          if(/arr|arret|arrêt|stop|downtime/i.test((r.type || '') + ' ' + (r.cat || ''))){
+            minutes += val;
+          } else {
+            qty += val;
+          }
+        }
+        var cause = r.cause || r.cat || r.type || '';
+        if(cause){
+          countByCause[cause] = (countByCause[cause] || 0) + 1;
+        }
+      });
+      var total = 0;
+      var top = 0;
+      Object.keys(countByCause).forEach(function(key){
+        total += countByCause[key];
+        if(countByCause[key] > top) top = countByCause[key];
+      });
+      return {
+        n: n,
+        minutes: Math.round(minutes),
+        qty: Math.round(qty),
+        topPct: total ? Math.round(100 * top / total) : 0
+      };
+    }
+
+    function render(){
+      var filtered = sortRows(applyFilters(ALL));
+
+      var total = filtered.length;
+      var size = state.size | 0;
+      if(!size) size = 50;
+      var pages = Math.max(1, Math.ceil(total / size));
+      if(state.page < 1) state.page = 1;
+      if(state.page > pages) state.page = pages;
+      var start = (state.page - 1) * size;
+      var rows = filtered.slice(start, start + size);
+
+      while(el.tbody.firstChild){
+        el.tbody.removeChild(el.tbody.firstChild);
+      }
+
+      rows.forEach(function(r){
+        var tr = document.createElement('tr');
+        function cell(value){
+          var td = document.createElement('td');
+          td.textContent = value || '';
+          td.style.padding = '6px';
+          td.style.borderBottom = '1px solid rgba(0,0,0,.06)';
+          return td;
+        }
+        tr.appendChild(cell(r.date));
+        tr.appendChild(cell(r.hour));
+        tr.appendChild(cell(r.line));
+        tr.appendChild(cell(r.type));
+        tr.appendChild(cell(r.cat));
+        tr.appendChild(cell(r.cause));
+        tr.appendChild(cell(r.detail));
+        tr.appendChild(cell(r.durqty));
+        tr.appendChild(cell(r.oper));
+        tr.appendChild(cell(r.comm));
+        el.tbody.appendChild(tr);
+      });
+
+      if(el.empty){
+        el.empty.style.display = rows.length ? 'none' : '';
+      }
+
+      var k = computeKPIs(filtered);
+      if(el.kCount) el.kCount.textContent = k.n;
+      if(el.kMin) el.kMin.textContent = k.minutes;
+      if(el.kQty) el.kQty.textContent = k.qty;
+      if(el.kTop) el.kTop.textContent = k.topPct + '%';
+
+      if(el.info){
+        var rangeStart = total ? (start + 1) : 0;
+        var rangeEnd = start + rows.length;
+        el.info.textContent = rangeStart + '–' + rangeEnd + '/' + total;
+      }
+      if(el.prev) el.prev.disabled = state.page <= 1;
+      if(el.next) el.next.disabled = state.page >= pages;
+
+      return filtered;
+    }
+
+    ['hf-from','hf-to','hf-line','hf-type','hf-cat','hf-q'].forEach(function(id){
+      var node = $(id);
+      if(!node) return;
+      var key = id.replace('hf-','');
+      node.addEventListener('input', function(){
+        state[key] = node.value.trim();
+        state.page = 1;
+        render();
+      });
+    });
+
+    if(el.refresh){
+      el.refresh.addEventListener('click', function(){
+        render();
+      });
+    }
+
+    if(el.sizeSel){
+      el.sizeSel.addEventListener('change', function(){
+        var val = parseInt(el.sizeSel.value, 10);
+        state.size = !isNaN(val) && val > 0 ? val : state.size;
+        state.page = 1;
+        render();
+      });
+    }
+
+    if(el.prev){
+      el.prev.addEventListener('click', function(){
+        if(state.page > 1){
+          state.page--;
+          render();
+        }
+      });
+    }
+
+    if(el.next){
+      el.next.addEventListener('click', function(){
+        state.page++;
+        render();
+      });
+    }
+
+    qsa('#histo-table thead th').forEach(function(th){
+      th.style.cursor = 'pointer';
+      th.addEventListener('click', function(){
+        var key = th.getAttribute('data-key');
+        if(!key) return;
+        if(state.sortKey === key){
+          state.sortDir *= -1;
+        } else {
+          state.sortKey = key;
+          state.sortDir = 1;
+        }
+        render();
+      });
+    });
+
+    if(el.exportBtn){
+      el.exportBtn.addEventListener('click', function(){
+        var rows = render();
+        var head = ['Date','Heure','Ligne','Type','Catégorie','Cause','Détail','Durée/Qté','Opérateur','Commentaire'];
+        var esc = function(value){
+          var str = value == null ? '' : String(value);
+          return /[",\n]/.test(str) ? '"' + str.replace(/"/g,'""') + '"' : str;
+        };
+        var out = [head.join(',')];
+        rows.forEach(function(r){
+          out.push([r.date,r.hour,r.line,r.type,r.cat,r.cause,r.detail,r.durqty,r.oper,r.comm].map(esc).join(','));
+        });
+        var csv = out.join('\n');
+        var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'historique_' + new Date().toISOString().slice(0,10) + '.csv';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(function(){
+          URL.revokeObjectURL(a.href);
+          a.remove();
+        }, 0);
+      });
+    }
+
+    if(el.to && !el.to.value){
+      el.to.value = new Date().toISOString().slice(0,10);
+      state.to = el.to.value;
+    }
+
+    render();
+
+  } catch(e){
+    console.warn('Historique Phase1 skipped:', e);
+  }
 })();
 </script>
 <script>
