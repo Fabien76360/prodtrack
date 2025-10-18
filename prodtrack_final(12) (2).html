@@ -1007,6 +1007,10 @@
             <span class="menu-icon">⚙️</span>
             Paramètres
         </button>
+        <button class="menu-item" id="nav-params-link" type="button" aria-controls="page-params">
+            <span class="menu-icon">🛠️</span>
+            Paramétrage
+        </button>
     </nav>
 
     <section class="sidebar-summary" aria-label="Synthèse du jour" id="summary">
@@ -1240,6 +1244,9 @@
         </section>
 
     </main>
+<section id="page-params" role="region" aria-label="Page Paramétrage" style="display:none; padding:16px;">
+  <button id="btn-back-from-params" type="button">Retour</button>
+</section>
 </div>
 
 <div class="toast" role="status" aria-live="polite" id="toast"></div>
@@ -2932,6 +2939,46 @@
     }
 
     initialize();
+})();
+</script>
+<script>
+(function () {
+  try {
+    var sidebarLink = document.getElementById('nav-params-link');
+    var pageParams  = document.getElementById('page-params');
+    if (!sidebarLink || !pageParams) return;
+
+    function pick(selArr){ for (var i=0;i<selArr.length;i++){var el=document.querySelector(selArr[i]); if(el) return el;} return null; }
+    var mainView = pick(['[data-app-root]','main','#content','.content','.page','.page-container']) || document.body;
+    var previousView = mainView;
+
+    function show(el){ if(el) el.style.display = ''; }
+    function hide(el){ if(el) el.style.display = 'none'; }
+
+    sidebarLink.addEventListener('click', function(e){
+      e.preventDefault();
+      // mémorise la vue visible au moment du clic
+      // si page-params est déjà ouverte, ne rien faire
+      if (pageParams.style.display !== 'none' && pageParams.offsetParent !== null) return;
+      // cherche une vue centrale visible courante si possible
+      var candidate = pick(['[data-app-root]','main','#content','.content','.page','.page-container']) || mainView;
+      // si candidate est la section paramètres, garde mainView
+      previousView = (candidate && candidate !== pageParams) ? candidate : mainView;
+      hide(previousView);
+      show(pageParams);
+    });
+
+    var backBtn = document.getElementById('btn-back-from-params');
+    if (backBtn){
+      backBtn.addEventListener('click', function(){
+        hide(pageParams);
+        show(previousView || mainView);
+      });
+    }
+  } catch(e) {
+    // fail-safe: ne rien casser
+    console.warn('Param page init skipped:', e);
+  }
 })();
 </script>
 </body>
