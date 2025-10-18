@@ -995,17 +995,13 @@
     </div>
 
     <nav class="sidebar-menu">
-        <button class="menu-item active" data-menu="saisie">
+        <button class="menu-item active" data-menu="saisie" id="nav-saisie-link">
             <span class="menu-icon">⏱️</span>
             Saisie opérateur
         </button>
-        <button class="menu-item" data-menu="historique">
+        <button class="menu-item" data-menu="historique" id="nav-histo-link">
             <span class="menu-icon">📋</span>
             Historique de saisie
-        </button>
-        <button class="menu-item" data-menu="parametres">
-            <span class="menu-icon">⚙️</span>
-            Paramètres
         </button>
         <button class="menu-item" id="nav-params-link" type="button" aria-controls="page-params">
             <span class="menu-icon">🛠️</span>
@@ -1244,9 +1240,15 @@
         </section>
 
     </main>
-<section id="page-params" role="region" aria-label="Page Paramétrage" style="display:none; padding:16px;">
-  <button id="btn-back-from-params" type="button">Retour</button>
-</section>
+    <section id="page-histo" role="region" aria-label="Historique de saisie" style="display:none; padding:16px;">
+      <h2>Historique de saisie</h2>
+      <button id="btn-back-from-histo" type="button">Retour</button>
+    </section>
+
+    <section id="page-params" role="region" aria-label="Paramétrage" style="display:none; padding:16px;">
+      <h2>Paramétrage</h2>
+      <button id="btn-back-from-params" type="button">Retour</button>
+    </section>
 </div>
 
 <div class="toast" role="status" aria-live="polite" id="toast"></div>
@@ -2942,42 +2944,155 @@
 })();
 </script>
 <script>
-(function () {
-  try {
-    var sidebarLink = document.getElementById('nav-params-link');
-    var pageParams  = document.getElementById('page-params');
-    if (!sidebarLink || !pageParams) return;
+(function(){
+  try{
+    function pick(arr){
+      for(var i=0;i<arr.length;i++){
+        var el=document.querySelector(arr[i]);
+        if(el) return el;
+      }
+      return null;
+    }
 
-    function pick(selArr){ for (var i=0;i<selArr.length;i++){var el=document.querySelector(selArr[i]); if(el) return el;} return null; }
-    var mainView = pick(['[data-app-root]','main','#content','.content','.page','.page-container']) || document.body;
-    var previousView = mainView;
+    var mainView  = pick(['[data-app-root]','main','#content','.content','.page','.page-container']) || document.body;
+    var pageHisto = document.getElementById('page-histo');
+    var pageParams = document.getElementById('page-params');
 
-    function show(el){ if(el) el.style.display = ''; }
-    function hide(el){ if(el) el.style.display = 'none'; }
-
-    sidebarLink.addEventListener('click', function(e){
-      e.preventDefault();
-      // mémorise la vue visible au moment du clic
-      // si page-params est déjà ouverte, ne rien faire
-      if (pageParams.style.display !== 'none' && pageParams.offsetParent !== null) return;
-      // cherche une vue centrale visible courante si possible
-      var candidate = pick(['[data-app-root]','main','#content','.content','.page','.page-container']) || mainView;
-      // si candidate est la section paramètres, garde mainView
-      previousView = (candidate && candidate !== pageParams) ? candidate : mainView;
-      hide(previousView);
-      show(pageParams);
+    Array.from(document.querySelectorAll('.sidebar *, nav *')).forEach(function(el){
+      try{
+        var t = (el.textContent || '').trim();
+        if (t === 'Paramètres' && !/Paramétrage/i.test(t)) {
+          var node = el.closest('li, a, button') || el;
+          if (node && node.parentNode) {
+            node.parentNode.removeChild(node);
+          }
+        }
+      }catch(e){}
     });
 
-    var backBtn = document.getElementById('btn-back-from-params');
-    if (backBtn){
-      backBtn.addEventListener('click', function(){
-        hide(pageParams);
-        show(previousView || mainView);
+    var links = {
+      saisie: document.getElementById('nav-saisie-link'),
+      histo: document.getElementById('nav-histo-link'),
+      params: document.getElementById('nav-params-link')
+    };
+
+    var routes = {
+      saisie: mainView,
+      histo: pageHisto,
+      params: pageParams
+    };
+
+    function hide(el){
+      if(el && el !== document.body){
+        el.style.display='none';
+      }
+    }
+
+    function show(el){
+      if(el && el !== document.body){
+        el.style.display='';
+      }
+    }
+
+    var knownViews = [];
+    Object.keys(routes).forEach(function(key){
+      var view = routes[key];
+      if(view && knownViews.indexOf(view) === -1){
+        knownViews.push(view);
+      }
+    });
+
+    var historyStack = ['saisie'];
+
+    function setActive(link){
+      var activeClass = 'active';
+      var baseLink = link || links.saisie || links.histo || links.params;
+      var menuRoot = (baseLink && baseLink.closest && baseLink.closest('nav, .sidebar')) || document;
+      var currentActive = menuRoot.querySelectorAll('.'+activeClass);
+      for(var i=0;i<currentActive.length;i++){
+        currentActive[i].classList.remove(activeClass);
+      }
+      if(link && link.classList && typeof link.classList.add === 'function'){
+        link.classList.add(activeClass);
+      }
+    }
+
+    function navigate(to, options){
+      if(!routes[to]){
+        to = 'saisie';
+      }
+      var target = routes[to] || mainView;
+      if(!target) return;
+
+      for(var i=0;i<knownViews.length;i++){
+        var view = knownViews[i];
+        if(view !== target){
+          hide(view);
+        }
+      }
+      show(target);
+
+      if(!options || !options.replace){
+        var lastRoute = historyStack[historyStack.length-1];
+        if(lastRoute !== to){
+          historyStack.push(to);
+        }
+      }
+
+      setActive(links[to] || null);
+    }
+
+    function goBack(){
+      if(historyStack.length > 1){
+        historyStack.pop();
+        var previousRoute = historyStack[historyStack.length-1] || 'saisie';
+        navigate(previousRoute, { replace: true });
+      } else {
+        navigate('saisie', { replace: true });
+      }
+    }
+
+    if(links.saisie){
+      links.saisie.addEventListener('click', function(e){
+        e.preventDefault();
+        navigate('saisie');
       });
     }
-  } catch(e) {
-    // fail-safe: ne rien casser
-    console.warn('Param page init skipped:', e);
+
+    if(links.histo){
+      links.histo.addEventListener('click', function(e){
+        e.preventDefault();
+        navigate('histo');
+      });
+    }
+
+    if(links.params){
+      links.params.addEventListener('click', function(e){
+        e.preventDefault();
+        navigate('params');
+      });
+    }
+
+    var backH = document.getElementById('btn-back-from-histo');
+    if(backH){
+      backH.addEventListener('click', function(){
+        goBack();
+      });
+    }
+
+    var backP = document.getElementById('btn-back-from-params');
+    if(backP){
+      backP.addEventListener('click', function(){
+        goBack();
+      });
+    }
+
+    if(pageHisto) hide(pageHisto);
+    if(pageParams) hide(pageParams);
+    navigate('saisie', { replace: true });
+
+  }catch(err){
+    console.warn('Nav SPA init skipped:', err);
   }
 })();
 </script>
