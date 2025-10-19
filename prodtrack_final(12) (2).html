@@ -1142,99 +1142,110 @@
         </section>
 
         <!-- Event Form Section -->
-        <section class="card" aria-label="Nouvel événement">
-            <h2>événements</h2>
-            <div class="profile-meta" aria-live="polite">
-                <div class="profile-meta-grid profile-meta-grid--dual">
-                    <div class="profile-meta-card">
+        <section class="card" id="tile-evenements" data-tile="evenements" aria-label="Nouvel événement">
+            <h2>Événements</h2>
+            <div style="display:flex; flex-direction:column; gap:1.5rem;">
+                <div id="evenements-zone-saisie" style="display:flex; flex-direction:column; gap:1rem; background:rgba(15,23,42,0.55); border:1px solid var(--border); border-radius:16px; padding:1.25rem;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:0.75rem;">
+                        <span style="font-size:0.75rem; letter-spacing:0.08em; text-transform:uppercase; opacity:0.7;">Zone de saisie événement</span>
+                        <span style="font-size:0.75rem; opacity:0.6;">Compléter avant validation</span>
+                    </div>
+                    <form id="eventForm">
+                        <div class="form-grid" id="formGrid">
+                            <label>
+                                Type
+                                <select id="type" name="type" required></select>
+                            </label>
+                            <label>
+                                Catégorie
+                                <select id="category" name="category" required></select>
+                            </label>
+                            <label>
+                                Cause 5M
+                                <select id="cause" name="cause" required></select>
+                            </label>
+                            <label>
+                                Détail
+                                <select id="detail" name="detail" required></select>
+                            </label>
+                            <label>
+                                Durée (min)
+                                <input id="duration" name="duration" type="number" min="1" step="1" required>
+                            </label>
+                            <div id="dynamicFields" class="form-grid" style="grid-column: 1/-1; padding-top:0"></div>
+                        </div>
+                        <label data-field="commentaire" class="optional-field" style="display:flex; flex-direction:column; gap:0.5rem; margin-top:1.5rem;">
+                            Commentaire
+                            <textarea id="commentaire" name="commentaire" maxlength="200" placeholder="Observation"></textarea>
+                        </label>
+                        <div style="margin-top:1.5rem; display:flex; gap:1rem; flex-wrap:wrap">
+                            <button id="submitBtn" type="submit">Ajouter</button>
+                            <button id="undoLastBtn" class="secondary" type="button">Annule dernière saisie</button>
+                        </div>
+                    </form>
+                </div>
+                <div id="evenements-indicateurs" aria-live="polite" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px,1fr)); gap:1rem;">
+                    <div class="profile-meta-card" style="display:flex; flex-direction:column; gap:0.35rem; padding:1rem; border-radius:16px; background:rgba(15,23,42,0.55); border:1px solid var(--border); min-height:160px;">
                         <span class="profile-meta-label">Minutes à justifier</span>
                         <span class="profile-meta-value" id="profileMinutesAjust">—</span>
                         <span class="profile-meta-subtext" id="profileMinutesAjustHint">Production vs objectif</span>
                     </div>
-                    <div class="profile-meta-card">
+                    <div class="profile-meta-card" style="display:flex; flex-direction:column; gap:0.35rem; padding:1rem; border-radius:16px; background:rgba(15,23,42,0.55); border:1px solid var(--border); min-height:160px;">
                         <span class="profile-meta-label">Delta</span>
                         <span class="profile-meta-value profile-meta-delta neutral" id="profileDelta">—</span>
                         <span class="profile-meta-subtext" id="profileDeltaHint">Cible : —</span>
                     </div>
-                </div>
-                <div class="profile-meta-grid profile-meta-grid--triple">
-                    <div class="profile-meta-card">
+                    <div class="profile-meta-card" style="display:flex; flex-direction:column; gap:0.35rem; padding:1rem; border-radius:16px; background:rgba(15,23,42,0.55); border:1px solid var(--border); min-height:160px;">
                         <span class="profile-meta-label">OEE horaire</span>
                         <span class="profile-meta-value" id="profileOeeHour">—</span>
                         <span class="profile-meta-subtext">Cible : <span id="profileOeeTarget">—</span></span>
                     </div>
-                    <div class="profile-meta-card">
+                    <div class="profile-meta-card" style="display:flex; flex-direction:column; gap:0.35rem; padding:1rem; border-radius:16px; background:rgba(15,23,42,0.55); border:1px solid var(--border); min-height:160px;">
                         <span class="profile-meta-label">Minutes causes</span>
                         <span class="profile-meta-value" id="profileMinutesCauses">—</span>
                         <span class="profile-meta-subtext">Reste : <span id="profileMinutesReste">—</span> min</span>
                     </div>
-                    <div id="tile-heure-courante" class="card" style="min-width:240px; padding:16px; border-radius:16px;">
-                      <div style="opacity:.7; font-weight:600; letter-spacing:.06em;">SYNTHÈSE HEURE</div>
-                      <div style="height:6px; width:44px; background:#6ee7e7; border-radius:4px; margin:8px 0;"></div>
+                </div>
+                <div id="evenements-synthese-validation" style="display:flex; flex-wrap:wrap; gap:1rem; align-items:stretch;">
+                    <div style="flex:1 1 260px; min-width:240px;">
+                        <div id="tile-heure-courante" class="card" style="min-width:240px; padding:16px; border-radius:16px; height:100%; display:flex; flex-direction:column;">
+                          <div style="opacity:.7; font-weight:600; letter-spacing:.06em;">SYNTHÈSE HEURE</div>
+                          <div style="height:6px; width:44px; background:#6ee7e7; border-radius:4px; margin:8px 0;"></div>
 
-                      <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; padding:4px 0;">
-                        <div style="display:flex; align-items:center; gap:8px;">
-                          <span style="display:inline-block;width:8px;height:8px;border-radius:9999px;background:#9aa4af;"></span>
-                          <span id="hc-label" style="opacity:.9;">Autre</span>
+                          <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; padding:4px 0;">
+                            <div style="display:flex; align-items:center; gap:8px;">
+                              <span style="display:inline-block;width:8px;height:8px;border-radius:9999px;background:#9aa4af;"></span>
+                              <span id="hc-label" style="opacity:.9;">Autre</span>
+                            </div>
+                            <div id="hc-min" style="font-weight:600;">0 min</div>
+                          </div>
+
+                          <div style="border-top:1px dashed rgba(255,255,255,.12); margin:8px 0;"></div>
+
+                          <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <div style="opacity:.9;">Total</div>
+                            <div id="hc-total" style="font-weight:700;">0 min</div>
+                          </div>
+
+                          <div style="margin-top:12px; padding:12px; border-radius:12px; background:rgba(255,255,255,.04);">
+                            <div style="opacity:.6; font-weight:600; letter-spacing:.06em;">VALIDATION</div>
+                            <div id="hc-status" style="margin-top:6px; font-weight:800; color:#ef4444;">À équilibrer</div>
+                            <div id="hc-remaining" style="opacity:.8; margin-top:2px;">0 min à répartir</div>
+                          </div>
+
+                          <small id="hc-window" style="opacity:.6; display:block; margin-top:8px;">Fenêtre: —:—–—:—</small>
                         </div>
-                        <div id="hc-min" style="font-weight:600;">0 min</div>
-                      </div>
-
-                      <div style="border-top:1px dashed rgba(255,255,255,.12); margin:8px 0;"></div>
-
-                      <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <div style="opacity:.9;">Total</div>
-                        <div id="hc-total" style="font-weight:700;">0 min</div>
-                      </div>
-
-                      <div style="margin-top:12px; padding:12px; border-radius:12px; background:rgba(255,255,255,.04);">
-                        <div style="opacity:.6; font-weight:600; letter-spacing:.06em;">VALIDATION</div>
-                        <div id="hc-status" style="margin-top:6px; font-weight:800; color:#ef4444;">À équilibrer</div>
-                        <div id="hc-remaining" style="opacity:.8; margin-top:2px;">0 min à répartir</div>
-                      </div>
-
-                      <small id="hc-window" style="opacity:.6; display:block; margin-top:8px;">Fenêtre: —:—–—:—</small>
                     </div>
-                    <div class="profile-meta-card">
-                        <span class="profile-meta-label">Validation</span>
-                        <span class="profile-meta-value profile-meta-validation idle" id="profileValidation">—</span>
-                        <span class="profile-meta-subtext" id="profileValidationHint">Sélectionnez un créneau</span>
+                    <div id="tile-validation-globale" class="card" style="flex:1 1 260px; min-width:240px; padding:16px; border-radius:16px; display:flex; flex-direction:column; gap:0.75rem;">
+                        <div style="opacity:.6; font-weight:600; letter-spacing:.06em;">VALIDATION GLOBALE</div>
+                        <div style="display:flex; flex-direction:column; gap:0.5rem;">
+                            <span class="profile-meta-value profile-meta-validation idle" id="profileValidation">—</span>
+                            <span class="profile-meta-subtext" id="profileValidationHint">Sélectionnez un créneau</span>
+                        </div>
+                        <small style="opacity:.6;">Assurez-vous que minutes et delta sont équilibrés avant clôture.</small>
                     </div>
                 </div>
             </div>
-            <form id="eventForm">
-                <div class="form-grid" id="formGrid">
-                    <label>
-                        Type
-                        <select id="type" name="type" required></select>
-                    </label>
-                    <label>
-                        Catégorie
-                        <select id="category" name="category" required></select>
-                    </label>
-                    <label>
-                        Cause 5M
-                        <select id="cause" name="cause" required></select>
-                    </label>
-                    <label>
-                        Détail
-                        <select id="detail" name="detail" required></select>
-                    </label>
-                    <label>
-                        Durée (min)
-                        <input id="duration" name="duration" type="number" min="1" step="1" required>
-                    </label>
-                    <div id="dynamicFields" class="form-grid" style="grid-column: 1/-1; padding-top:0"></div>
-                </div>
-                <label data-field="commentaire" class="optional-field" style="display:flex; flex-direction:column; gap:0.5rem; margin-top:1.5rem;">
-                    Commentaire
-                    <textarea id="commentaire" name="commentaire" maxlength="200" placeholder="Observation"></textarea>
-                </label>
-                <div style="margin-top:1.5rem; display:flex; gap:1rem; flex-wrap:wrap">
-                    <button id="submitBtn" type="submit">Ajouter</button>
-                    <button id="undoLastBtn" class="secondary" type="button">Annule dernière saisie</button>
-                </div>
-            </form>
         </section>
 
         <!-- Events Table Section -->
