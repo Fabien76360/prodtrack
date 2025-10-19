@@ -1184,65 +1184,50 @@
                         </div>
                     </form>
                 </div>
-                <div id="evenements-indicateurs" aria-live="polite" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px,1fr)); gap:1rem;">
-                    <div class="profile-meta-card" style="display:flex; flex-direction:column; gap:0.35rem; padding:1rem; border-radius:16px; background:rgba(15,23,42,0.55); border:1px solid var(--border); min-height:160px;">
-                        <span class="profile-meta-label">Minutes à justifier</span>
-                        <span class="profile-meta-value" id="profileMinutesAjust">—</span>
-                        <span class="profile-meta-subtext" id="profileMinutesAjustHint">Production vs objectif</span>
-                    </div>
-                    <div class="profile-meta-card" style="display:flex; flex-direction:column; gap:0.35rem; padding:1rem; border-radius:16px; background:rgba(15,23,42,0.55); border:1px solid var(--border); min-height:160px;">
-                        <span class="profile-meta-label">Delta</span>
-                        <span class="profile-meta-value profile-meta-delta neutral" id="profileDelta">—</span>
-                        <span class="profile-meta-subtext" id="profileDeltaHint">Cible : —</span>
-                    </div>
-                    <div class="profile-meta-card" style="display:flex; flex-direction:column; gap:0.35rem; padding:1rem; border-radius:16px; background:rgba(15,23,42,0.55); border:1px solid var(--border); min-height:160px;">
-                        <span class="profile-meta-label">OEE horaire</span>
-                        <span class="profile-meta-value" id="profileOeeHour">—</span>
-                        <span class="profile-meta-subtext">Cible : <span id="profileOeeTarget">—</span></span>
-                    </div>
-                    <div class="profile-meta-card" style="display:flex; flex-direction:column; gap:0.35rem; padding:1rem; border-radius:16px; background:rgba(15,23,42,0.55); border:1px solid var(--border); min-height:160px;">
-                        <span class="profile-meta-label">Minutes causes</span>
-                        <span class="profile-meta-value" id="profileMinutesCauses">—</span>
-                        <span class="profile-meta-subtext">Reste : <span id="profileMinutesReste">—</span> min</span>
-                    </div>
-                </div>
-                <div id="evenements-synthese-validation" style="display:flex; flex-wrap:wrap; gap:1rem; align-items:stretch;">
-                    <div style="flex:1 1 260px; min-width:240px;">
-                        <div id="tile-heure-courante" class="card" style="min-width:240px; padding:16px; border-radius:16px; height:100%; display:flex; flex-direction:column;">
-                          <div style="opacity:.7; font-weight:600; letter-spacing:.06em;">SYNTHÈSE HEURE</div>
-                          <div style="height:6px; width:44px; background:#6ee7e7; border-radius:4px; margin:8px 0;"></div>
-
-                          <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; padding:4px 0;">
-                            <div style="display:flex; align-items:center; gap:8px;">
-                              <span style="display:inline-block;width:8px;height:8px;border-radius:9999px;background:#9aa4af;"></span>
-                              <span id="hc-label" style="opacity:.9;">Autre</span>
+                <div id="evenements-recap" style="display:flex; flex-wrap:wrap; gap:1.25rem; align-items:flex-start;">
+                    <div id="tile-recap-heure" class="card" style="min-width:280px; max-width:360px; width:100%; padding:16px; border-radius:16px; display:flex; flex-direction:column; gap:12px;">
+                        <div style="display:flex; flex-direction:column; gap:4px;">
+                            <div style="opacity:.7; font-weight:600; letter-spacing:.06em;">RÉCAP HEURE</div>
+                            <small id="rh-window" style="opacity:.6; font-size:0.85rem;">Fenêtre: —:—–—:—</small>
+                        </div>
+                        <div style="display:grid; gap:12px;">
+                            <div style="display:grid; gap:12px; grid-template-columns:repeat(2,minmax(0,1fr));">
+                                <div style="background:rgba(15,23,42,0.55); border:1px solid var(--border); border-radius:12px; padding:12px; display:flex; flex-direction:column; gap:6px;">
+                                    <span style="opacity:.65; font-size:0.75rem; letter-spacing:.04em; text-transform:uppercase;">Produit heure</span>
+                                    <span id="rh-qty-h" style="font-weight:600; font-size:1.25rem;">0 u</span>
+                                </div>
+                                <div style="background:rgba(15,23,42,0.55); border:1px solid var(--border); border-radius:12px; padding:12px; display:flex; flex-direction:column; gap:6px;">
+                                    <span style="opacity:.65; font-size:0.75rem; letter-spacing:.04em; text-transform:uppercase;">Cible horaire</span>
+                                    <span id="rh-qty-target" style="font-weight:600; font-size:1.25rem;">0 u</span>
+                                </div>
                             </div>
-                            <div id="hc-min" style="font-weight:600;">0 min</div>
-                          </div>
-
-                          <div style="border-top:1px dashed rgba(255,255,255,.12); margin:8px 0;"></div>
-
-                          <div style="display:flex; justify-content:space-between; align-items:center;">
-                            <div style="opacity:.9;">Total</div>
-                            <div id="hc-total" style="font-weight:700;">0 min</div>
-                          </div>
-
-                          <div style="margin-top:12px; padding:12px; border-radius:12px; background:rgba(255,255,255,.04);">
-                            <div style="opacity:.6; font-weight:600; letter-spacing:.06em;">VALIDATION</div>
-                            <div id="hc-status" style="margin-top:6px; font-weight:800; color:#ef4444;">À équilibrer</div>
-                            <div id="hc-remaining" style="opacity:.8; margin-top:2px;">0 min à répartir</div>
-                          </div>
-
-                          <small id="hc-window" style="opacity:.6; display:block; margin-top:8px;">Fenêtre: —:—–—:—</small>
+                            <div style="display:grid; gap:12px; grid-template-columns:repeat(3,minmax(0,1fr));">
+                                <div style="background:rgba(15,23,42,0.55); border:1px solid var(--border); border-radius:12px; padding:12px; display:flex; flex-direction:column; gap:6px;">
+                                    <span style="opacity:.65; font-size:0.75rem; letter-spacing:.04em; text-transform:uppercase;">À justifier</span>
+                                    <span id="rh-min-need" style="font-weight:600; font-size:1.1rem;">0 min</span>
+                                </div>
+                                <div style="background:rgba(15,23,42,0.55); border:1px solid var(--border); border-radius:12px; padding:12px; display:flex; flex-direction:column; gap:6px;">
+                                    <span style="opacity:.65; font-size:0.75rem; letter-spacing:.04em; text-transform:uppercase;">Causes saisies</span>
+                                    <span id="rh-min-causes" style="font-weight:600; font-size:1.1rem;">0 min</span>
+                                </div>
+                                <div style="background:rgba(15,23,42,0.55); border:1px solid var(--border); border-radius:12px; padding:12px; display:flex; flex-direction:column; gap:6px;">
+                                    <span style="opacity:.65; font-size:0.75rem; letter-spacing:.04em; text-transform:uppercase;">Reste à répartir</span>
+                                    <span id="rh-min-gap" style="font-weight:600; font-size:1.1rem;">0 min</span>
+                                </div>
+                            </div>
+                            <div style="display:grid; gap:12px; grid-template-columns:2fr 1fr; align-items:stretch;">
+                                <div style="background:rgba(15,23,42,0.55); border:1px solid var(--border); border-radius:12px; padding:12px; display:flex; flex-direction:column; gap:6px;">
+                                    <span style="opacity:.65; font-size:0.75rem; letter-spacing:.04em; text-transform:uppercase;">Top cause</span>
+                                    <span id="rh-top-cause" style="font-weight:600; font-size:1.05rem;">—</span>
+                                    <span id="rh-top-count" style="opacity:.75; font-size:0.85rem;">0</span>
+                                </div>
+                                <div style="background:rgba(15,23,42,0.55); border:1px solid var(--border); border-radius:12px; padding:12px; display:flex; flex-direction:column; gap:6px; align-items:flex-end; text-align:right;">
+                                    <span style="opacity:.65; font-size:0.75rem; letter-spacing:.04em; text-transform:uppercase; align-self:flex-start;">État global</span>
+                                    <span id="rh-status" style="font-weight:700; font-size:1.1rem; color:#fbbf24;">À compléter</span>
+                                    <span id="rh-msg" style="opacity:.8; font-size:0.85rem;">Compléter les informations.</span>
+                                </div>
+                            </div>
                         </div>
-                    </div>
-                    <div id="tile-validation-globale" class="card" style="flex:1 1 260px; min-width:240px; padding:16px; border-radius:16px; display:flex; flex-direction:column; gap:0.75rem;">
-                        <div style="opacity:.6; font-weight:600; letter-spacing:.06em;">VALIDATION GLOBALE</div>
-                        <div style="display:flex; flex-direction:column; gap:0.5rem;">
-                            <span class="profile-meta-value profile-meta-validation idle" id="profileValidation">—</span>
-                            <span class="profile-meta-subtext" id="profileValidationHint">Sélectionnez un créneau</span>
-                        </div>
-                        <small style="opacity:.6;">Assurez-vous que minutes et delta sont équilibrés avant clôture.</small>
                     </div>
                 </div>
             </div>
@@ -3226,110 +3211,271 @@
   }
 })();
 </script>
+
 <script>
 (function(){
   try{
-    function $(s,c){return (c||document).querySelector(s);}
-    function qa(s,c){return Array.from((c||document).querySelectorAll(s));}
-    function parse(s){try{return JSON.parse(s)}catch(e){return null}}
-    function pick(o,ks){for(var i=0;i<ks.length;i++){if(o&&o[ks[i]]!=null)return o[ks[i]]}return''}
-    function toISO(d){ if(!d) return ''; if(/^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
-      var x=new Date(d); return isNaN(x)?'':x.toISOString().slice(0,10); }
-    function toHHmm(v){
-      if(!v) return '';
-      var s=String(v).trim();
-      if(/^\d{2}:\d{2}$/.test(s)) return s;
-      var d=new Date(s); return isNaN(d)?'':String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+    var tile = document.getElementById('tile-recap-heure');
+    if(!tile || tile.dataset.recapReady === '1') return;
+    tile.dataset.recapReady = '1';
+
+    function $(sel, scope){ return (scope || document).querySelector(sel); }
+    function parseJSON(input){ try { return JSON.parse(input); } catch(e){ return null; } }
+    function parseNumber(value){
+      if(value === null || value === undefined) return NaN;
+      if(typeof value === 'number') return Number.isFinite(value) ? value : NaN;
+      var str = String(value).replace(',', '.');
+      var match = str.match(/-?\d+(?:\.\d+)?/);
+      return match ? parseFloat(match[0]) : NaN;
     }
-    function nnum(v){var t=String(v||'').replace(',','.');var n=parseFloat(t);return isNaN(n)?0:n;}
-    function nowWindow(){
-      var now=new Date();
-      var d=now.toISOString().slice(0,10);
-      var h=String(now.getHours()).padStart(2,'0');
-      return {date:d, hour:h, label:h+':00–'+h+':59'};
+    function formatUnit(value, suffix){
+      if(!Number.isFinite(value)) return '—';
+      var rounded = Math.round(value);
+      return rounded + ' ' + suffix;
+    }
+    function formatMinutes(value){
+      if(!Number.isFinite(value)) return '—';
+      var rounded = Math.round(value);
+      return rounded + ' min';
     }
 
-    function loadRaw(){
-      var keys=['prodtrack_events','prodtrack_saisies','events','saisies'];
-      for(var i=0;i<keys.length;i++){var v=localStorage.getItem(keys[i]); if(v){var a=parse(v); if(Array.isArray(a)) return a;}}
-      var n=$('#prodtrack-data'); if(n&&n.textContent){var a=parse(n.textContent); if(Array.isArray(a)) return a;}
-      return [];
+    var refs = {
+      window: $('#rh-window', tile),
+      qty: $('#rh-qty-h', tile),
+      target: $('#rh-qty-target', tile),
+      need: $('#rh-min-need', tile),
+      causes: $('#rh-min-causes', tile),
+      gap: $('#rh-min-gap', tile),
+      top: $('#rh-top-cause', tile),
+      topCount: $('#rh-top-count', tile),
+      status: $('#rh-status', tile),
+      msg: $('#rh-msg', tile)
+    };
+
+    function findCadenceElement(){
+      var selectors = ['#cadence','[name="cadence"]','input[id*="cadence" i]','input[name*="cadence" i]','input[aria-label*="cadence" i]','[data-cadence]','span[id*="cadence" i]','div[id*="cadence" i]'];
+      for(var i=0;i<selectors.length;i++){
+        var el = document.querySelector(selectors[i]);
+        if(el) return el;
+      }
+      return null;
     }
-    function normalize(rows){
-      return rows.map(function(r){
-        return {
-          date: toISO(pick(r,['date','jour','day'])) || toISO(r.timestamp),
-          hour: toHHmm(pick(r,['hour','heure','time'])),
-          type: String(pick(r,['type'])||''),
-          cat : String(pick(r,['category','categorie','cat'])||''),
-          cause:String(pick(r,['cause'])||''),
-          dur  : String(pick(r,['minutes','duree','durée','qty','quantite','quantité','good','duration'])||'')
-        };
+    var cadenceEl = findCadenceElement();
+    function getCadence(){
+      if(!cadenceEl || !document.contains(cadenceEl)){
+        cadenceEl = findCadenceElement();
+      }
+      if(!cadenceEl) return NaN;
+      var raw = 'value' in cadenceEl ? cadenceEl.value : cadenceEl.textContent;
+      return parseNumber(raw);
+    }
+
+    function getHourQuantity(){
+      var selectors = ['#hourQuantity','[name="hourQuantity"]','input[id*="quantit" i]','[data-qty-hour]','[data-hour-qty]'];
+      for(var i=0;i<selectors.length;i++){
+        var node = document.querySelector(selectors[i]);
+        if(!node) continue;
+        var raw = 'value' in node ? node.value : node.textContent;
+        var num = parseNumber(raw);
+        if(Number.isFinite(num)) return num;
+      }
+      var slot = document.querySelector('.time-slot.active');
+      if(slot){
+        var rawSlot = slot.getAttribute('data-quantity') || slot.getAttribute('data-qty');
+        var slotVal = parseNumber(rawSlot);
+        if(Number.isFinite(slotVal)) return slotVal;
+      }
+      return NaN;
+    }
+
+    function getSelectedHourInfo(){
+      var hour = '';
+      var hourSources = [];
+      var directField = document.getElementById('heure') || document.getElementById('slot-heure');
+      if(directField) hourSources.push(directField.value || directField.textContent || '');
+      var timeInputs = Array.from(document.querySelectorAll('input[type="time"]'));
+      var filtered = timeInputs.filter(function(node){ return node.id !== 'closureStart' && node.id !== 'closureEnd'; });
+      if(filtered.length){ hourSources.push(filtered[0].value || ''); }
+      var active = document.querySelector('.time-slot.active');
+      if(active){ hourSources.push(active.dataset.hour ? active.dataset.hour + ':00' : active.textContent || ''); }
+      for(var i=0;i<hourSources.length && !hour;i++){
+        var candidate = hourSources[i];
+        if(!candidate) continue;
+        var match = String(candidate).match(/(\d{1,2})[:h]/);
+        if(match){ hour = match[1].padStart(2,'0'); }
+      }
+      if(!hour){
+        hour = String(new Date().getHours()).padStart(2,'0');
+      }
+      var windowLabel = hour + ':00–' + hour + ':59';
+      var isoDate = new Date().toISOString().slice(0,10);
+      return { hour: hour, label: windowLabel, iso: isoDate };
+    }
+
+    function collectEvents(isoDate){
+      var items = [];
+      var seen = Object.create(null);
+      function addFromValue(raw){
+        if(!raw) return;
+        var parsed = parseJSON(raw);
+        if(Array.isArray(parsed)){
+          Array.prototype.push.apply(items, parsed);
+        } else if(parsed && Array.isArray(parsed.events)){
+          Array.prototype.push.apply(items, parsed.events);
+        }
+      }
+      var lineInput = document.getElementById('lineInput');
+      var lineValue = lineInput ? lineInput.value.trim() : '';
+      var baseKeys = ['prodtrack_events','prodtrack_saisies','events','saisies'];
+      baseKeys.forEach(function(key){
+        if(seen[key]) return;
+        seen[key] = true;
+        try { addFromValue(localStorage.getItem(key)); } catch(e) {}
       });
+      if(isoDate){
+        var dayPrefixes = [];
+        var prefix = 'prodtrack:v1:day:' + isoDate + ':';
+        if(lineValue) dayPrefixes.push(prefix + lineValue);
+        dayPrefixes.push(prefix + (lineValue || 'sans-ligne'));
+        dayPrefixes.forEach(function(key){
+          if(seen[key]) return;
+          seen[key] = true;
+          try { addFromValue(localStorage.getItem(key)); } catch(e) {}
+        });
+        try {
+          Object.keys(localStorage || {}).forEach(function(key){
+            if(key.indexOf('prodtrack:v1:day:' + isoDate) === 0 && !seen[key]){
+              seen[key] = true;
+              try { addFromValue(localStorage.getItem(key)); } catch(e) {}
+            }
+          });
+        } catch(e) {}
+      }
+      var dataNode = document.getElementById('prodtrack-data');
+      if(dataNode && dataNode.textContent){ addFromValue(dataNode.textContent); }
+      return items;
     }
 
-    var tile = $('#tile-heure-courante'); if(!tile) return;
-    var ALL = normalize(loadRaw());
+    function normalizeEvent(entry){
+      if(!entry || typeof entry !== 'object') return null;
+      var date = entry.date || entry.jour || entry.day || '';
+      if(!date && entry.timestamp){
+        var ts = new Date(entry.timestamp);
+        if(!isNaN(ts)) date = ts.toISOString().slice(0,10);
+      }
+      var hour = entry.heure || entry.hour || entry.time || entry.slot || entry.debut || '';
+      if(typeof hour === 'number'){ hour = String(hour).padStart(2,'0') + ':00'; }
+      if(hour){
+        var match = String(hour).match(/(\d{1,2})[:h](\d{2})?/);
+        hour = match ? match[1].padStart(2,'0') + ':00' : '';
+      }
+      var duration = entry.duree_min;
+      if(duration == null){
+        var keys = ['minutes','duree','durée','qty','quantite','quantité','duration','good'];
+        for(var i=0;i<keys.length;i++){
+          if(entry[keys[i]] != null){
+            duration = entry[keys[i]];
+            break;
+          }
+        }
+      }
+      var minutes = parseNumber(duration);
+      if(!Number.isFinite(minutes)) minutes = 0;
+      return {
+        date: date || '',
+        hour: hour || '',
+        type: entry.type || '',
+        category: entry.categorie || entry.category || entry.cat || '',
+        cause: entry.cause || '',
+        minutes: minutes
+      };
+    }
 
     function compute(){
-      var w = nowWindow();
-      var list = ALL.filter(function(r){
-        if(r.date !== w.date) return false;
-        var hh = r.hour ? r.hour.slice(0,2) : '';
-        return hh === w.hour;
+      var info = getSelectedHourInfo();
+      if(refs.window){ refs.window.textContent = 'Fenêtre: ' + info.label; }
+      var events = collectEvents(info.iso).map(normalizeEvent).filter(function(evt){
+        return evt && evt.hour && evt.hour.slice(0,2) === info.hour;
       });
-
-      var minutes=0, freq={}, top='Autre';
-      list.forEach(function(r){
-        var isStop = /arr|arret|arrêt|panne|stop|downtime/i.test((r.type+' '+r.cat).toLowerCase());
-        var v = nnum(r.dur);
-        if(isStop) minutes += v;
-        var k = r.cause || r.cat || r.type || 'Autre';
-        freq[k] = (freq[k]||0)+1;
-      });
-      var best=0; Object.keys(freq).forEach(function(k){ if(freq[k]>best){best=freq[k]; top=k;} });
-
-      var mj = 0;
-      var candidates = [
-        '#min-justif-heure','#minutes-justif-heure','[data-justif-hour]',
-        '#minutes-a-justifier','#min-justif','[data-justif]'
-      ];
-      for(var i=0;i<candidates.length;i++){
-        var el = $(candidates[i]); if(!el) continue;
-        var val = ('value' in el) ? el.value : el.textContent;
-        mj = Math.max(mj, nnum(val));
+      var qtyHour = getHourQuantity();
+      var cadence = getCadence();
+      var target = Number.isFinite(cadence) && cadence > 0 ? cadence : NaN;
+      var need = 0;
+      if(Number.isFinite(target) && target > 0){
+        var produced = Number.isFinite(qtyHour) ? qtyHour : 0;
+        var deltaQty = Math.max(0, target - produced);
+        need = Math.round((deltaQty * 60) / target);
       }
-      if(mj<=0) mj = minutes;
-
-      var remaining = Math.max(0, Math.round(mj - minutes));
-
-      var el = {
-        label: $('#hc-label', tile),
-        min:   $('#hc-min', tile),
-        total: $('#hc-total', tile),
-        status:$('#hc-status', tile),
-        rem:   $('#hc-remaining', tile),
-        win:   $('#hc-window', tile)
-      };
-      if(el.win)   el.win.textContent = 'Fenêtre: '+w.label;
-      if(el.label) el.label.textContent = top || 'Autre';
-      if(el.min)   el.min.textContent   = Math.round(minutes)+' min';
-      if(el.total) el.total.textContent = Math.round(minutes)+' min';
-      if(el.rem)   el.rem.textContent   = remaining+' min à répartir';
-      if(el.status){
-        if(remaining>0){
-          el.status.textContent = 'À équilibrer';
-          el.status.style.color = '#ef4444';
-        } else {
-          el.status.textContent = 'OK';
-          el.status.style.color = '#10b981';
+      var downtime = 0;
+      var freq = Object.create(null);
+      events.forEach(function(evt){
+        var label = evt.cause || evt.category || evt.type || 'Autre';
+        freq[label] = (freq[label] || 0) + 1;
+        var text = (evt.type + ' ' + evt.category).toLowerCase();
+        if(/arr|arret|arrêt|panne|downtime/.test(text)){
+          downtime += evt.minutes;
         }
+      });
+      var causes = Math.round(downtime);
+      var gap = Math.max(0, need - causes);
+      var topLabel = '—';
+      var topCount = 0;
+      Object.keys(freq).forEach(function(label){
+        if(freq[label] > topCount){
+          topCount = freq[label];
+          topLabel = label || '—';
+        }
+      });
+
+      if(refs.qty){ refs.qty.textContent = formatUnit(Number.isFinite(qtyHour) ? qtyHour : NaN, 'u'); }
+      if(refs.target){ refs.target.textContent = formatUnit(target, 'u'); }
+      if(refs.need){ refs.need.textContent = formatMinutes(need); }
+      if(refs.causes){ refs.causes.textContent = formatMinutes(causes); }
+      if(refs.gap){ refs.gap.textContent = formatMinutes(gap); }
+      if(refs.top){ refs.top.textContent = topLabel; }
+      if(refs.topCount){ refs.topCount.textContent = String(topCount); }
+
+      var typeField = document.getElementById('type');
+      var categoryField = document.getElementById('category');
+      var durationField = document.getElementById('duration');
+      var typeVal = typeField ? (typeField.value || '').trim() : '';
+      var catVal = categoryField ? (categoryField.value || '').trim() : '';
+      var durRaw = durationField ? (durationField.value || durationField.textContent || '') : '';
+      var durVal = parseNumber(durRaw);
+      var hasEntry = !!(typeVal || catVal || (durRaw && durRaw.trim()));
+      var missing = false;
+      if(hasEntry){
+        if(!typeVal || !catVal || !Number.isFinite(durVal) || durVal <= 0){
+          missing = true;
+        }
+      }
+
+      var status = 'OK';
+      var message = 'Créneau équilibré.';
+      var color = '#10b981';
+      if(missing){
+        status = 'À compléter';
+        message = 'Compléter type, catégorie et durée.';
+        color = '#fbbf24';
+      } else if(gap > 1){
+        status = 'À équilibrer';
+        message = gap + ' min à répartir.';
+        color = '#ef4444';
+      }
+      if(refs.status){
+        refs.status.textContent = status;
+        refs.status.style.color = color;
+      }
+      if(refs.msg){
+        refs.msg.textContent = message;
       }
     }
 
     compute();
-    setInterval(compute, 60000);
-  }catch(e){ console.warn('Synthèse heure tuile skipped:', e); }
+    setInterval(compute, 10000);
+  }catch(err){
+    console.warn('Récap heure tile skipped:', err);
+  }
 })();
 </script>
 <script>
