@@ -1168,6 +1168,33 @@
                         <span class="profile-meta-value" id="profileMinutesCauses">—</span>
                         <span class="profile-meta-subtext">Reste : <span id="profileMinutesReste">—</span> min</span>
                     </div>
+                    <div id="tile-heure-courante" class="card" style="min-width:240px; padding:16px; border-radius:16px;">
+                      <div style="opacity:.7; font-weight:600; letter-spacing:.06em;">SYNTHÈSE HEURE</div>
+                      <div style="height:6px; width:44px; background:#6ee7e7; border-radius:4px; margin:8px 0;"></div>
+
+                      <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; padding:4px 0;">
+                        <div style="display:flex; align-items:center; gap:8px;">
+                          <span style="display:inline-block;width:8px;height:8px;border-radius:9999px;background:#9aa4af;"></span>
+                          <span id="hc-label" style="opacity:.9;">Autre</span>
+                        </div>
+                        <div id="hc-min" style="font-weight:600;">0 min</div>
+                      </div>
+
+                      <div style="border-top:1px dashed rgba(255,255,255,.12); margin:8px 0;"></div>
+
+                      <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <div style="opacity:.9;">Total</div>
+                        <div id="hc-total" style="font-weight:700;">0 min</div>
+                      </div>
+
+                      <div style="margin-top:12px; padding:12px; border-radius:12px; background:rgba(255,255,255,.04);">
+                        <div style="opacity:.6; font-weight:600; letter-spacing:.06em;">VALIDATION</div>
+                        <div id="hc-status" style="margin-top:6px; font-weight:800; color:#ef4444;">À équilibrer</div>
+                        <div id="hc-remaining" style="opacity:.8; margin-top:2px;">0 min à répartir</div>
+                      </div>
+
+                      <small id="hc-window" style="opacity:.6; display:block; margin-top:8px;">Fenêtre: —:—–—:—</small>
+                    </div>
                     <div class="profile-meta-card">
                         <span class="profile-meta-label">Validation</span>
                         <span class="profile-meta-value profile-meta-validation idle" id="profileValidation">—</span>
@@ -3186,6 +3213,112 @@
   } catch(e){
     console.warn('Clean extra header skipped:', e);
   }
+})();
+</script>
+<script>
+(function(){
+  try{
+    function $(s,c){return (c||document).querySelector(s);}
+    function qa(s,c){return Array.from((c||document).querySelectorAll(s));}
+    function parse(s){try{return JSON.parse(s)}catch(e){return null}}
+    function pick(o,ks){for(var i=0;i<ks.length;i++){if(o&&o[ks[i]]!=null)return o[ks[i]]}return''}
+    function toISO(d){ if(!d) return ''; if(/^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
+      var x=new Date(d); return isNaN(x)?'':x.toISOString().slice(0,10); }
+    function toHHmm(v){
+      if(!v) return '';
+      var s=String(v).trim();
+      if(/^\d{2}:\d{2}$/.test(s)) return s;
+      var d=new Date(s); return isNaN(d)?'':String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+    }
+    function nnum(v){var t=String(v||'').replace(',','.');var n=parseFloat(t);return isNaN(n)?0:n;}
+    function nowWindow(){
+      var now=new Date();
+      var d=now.toISOString().slice(0,10);
+      var h=String(now.getHours()).padStart(2,'0');
+      return {date:d, hour:h, label:h+':00–'+h+':59'};
+    }
+
+    function loadRaw(){
+      var keys=['prodtrack_events','prodtrack_saisies','events','saisies'];
+      for(var i=0;i<keys.length;i++){var v=localStorage.getItem(keys[i]); if(v){var a=parse(v); if(Array.isArray(a)) return a;}}
+      var n=$('#prodtrack-data'); if(n&&n.textContent){var a=parse(n.textContent); if(Array.isArray(a)) return a;}
+      return [];
+    }
+    function normalize(rows){
+      return rows.map(function(r){
+        return {
+          date: toISO(pick(r,['date','jour','day'])) || toISO(r.timestamp),
+          hour: toHHmm(pick(r,['hour','heure','time'])),
+          type: String(pick(r,['type'])||''),
+          cat : String(pick(r,['category','categorie','cat'])||''),
+          cause:String(pick(r,['cause'])||''),
+          dur  : String(pick(r,['minutes','duree','durée','qty','quantite','quantité','good','duration'])||'')
+        };
+      });
+    }
+
+    var tile = $('#tile-heure-courante'); if(!tile) return;
+    var ALL = normalize(loadRaw());
+
+    function compute(){
+      var w = nowWindow();
+      var list = ALL.filter(function(r){
+        if(r.date !== w.date) return false;
+        var hh = r.hour ? r.hour.slice(0,2) : '';
+        return hh === w.hour;
+      });
+
+      var minutes=0, freq={}, top='Autre';
+      list.forEach(function(r){
+        var isStop = /arr|arret|arrêt|panne|stop|downtime/i.test((r.type+' '+r.cat).toLowerCase());
+        var v = nnum(r.dur);
+        if(isStop) minutes += v;
+        var k = r.cause || r.cat || r.type || 'Autre';
+        freq[k] = (freq[k]||0)+1;
+      });
+      var best=0; Object.keys(freq).forEach(function(k){ if(freq[k]>best){best=freq[k]; top=k;} });
+
+      var mj = 0;
+      var candidates = [
+        '#min-justif-heure','#minutes-justif-heure','[data-justif-hour]',
+        '#minutes-a-justifier','#min-justif','[data-justif]'
+      ];
+      for(var i=0;i<candidates.length;i++){
+        var el = $(candidates[i]); if(!el) continue;
+        var val = ('value' in el) ? el.value : el.textContent;
+        mj = Math.max(mj, nnum(val));
+      }
+      if(mj<=0) mj = minutes;
+
+      var remaining = Math.max(0, Math.round(mj - minutes));
+
+      var el = {
+        label: $('#hc-label', tile),
+        min:   $('#hc-min', tile),
+        total: $('#hc-total', tile),
+        status:$('#hc-status', tile),
+        rem:   $('#hc-remaining', tile),
+        win:   $('#hc-window', tile)
+      };
+      if(el.win)   el.win.textContent = 'Fenêtre: '+w.label;
+      if(el.label) el.label.textContent = top || 'Autre';
+      if(el.min)   el.min.textContent   = Math.round(minutes)+' min';
+      if(el.total) el.total.textContent = Math.round(minutes)+' min';
+      if(el.rem)   el.rem.textContent   = remaining+' min à répartir';
+      if(el.status){
+        if(remaining>0){
+          el.status.textContent = 'À équilibrer';
+          el.status.style.color = '#ef4444';
+        } else {
+          el.status.textContent = 'OK';
+          el.status.style.color = '#10b981';
+        }
+      }
+    }
+
+    compute();
+    setInterval(compute, 60000);
+  }catch(e){ console.warn('Synthèse heure tuile skipped:', e); }
 })();
 </script>
 <script>
