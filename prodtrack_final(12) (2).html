@@ -1097,19 +1097,15 @@
 
             <fieldset class="line-config">
                 <legend class="line-config-title">Configuration ligne</legend>
-                <div class="line-config-options">
-                    <label class="line-config-option">
-                        <input type="radio" name="lineConfiguration" value="standard" checked>
-                        <span>Standard</span>
-                    </label>
-                    <label class="line-config-option">
-                        <input type="radio" name="lineConfiguration" value="cadence-plus">
-                        <span>Cadence +</span>
-                    </label>
-                    <label class="line-config-option">
-                        <input type="radio" name="lineConfiguration" value="oee-max">
-                        <span>OEE cible +</span>
-                    </label>
+                <div id="profil-ligne" style="display:flex;flex-direction:column;gap:6px;">
+                    <label for="profil-actif">Profil actif</label>
+                    <select id="profil-actif" aria-label="Profil actif">
+                        <option value="">Sélectionner un profil</option>
+                        <option value="jour-standard">Jour – Standard</option>
+                        <option value="soir-haute">Soir – Haute cadence</option>
+                        <option value="nuit-maint">Nuit – Maintenance</option>
+                    </select>
+                    <small id="profil-note" style="opacity:.7;">La sélection ajuste automatiquement la cadence et l’OEE cible.</small>
                 </div>
             </fieldset>
 
@@ -3189,6 +3185,83 @@
     });
   } catch(e){
     console.warn('Clean extra header skipped:', e);
+  }
+})();
+</script>
+<script>
+(function(){
+  try{
+    function $(s,c){ return (c||document).querySelector(s); }
+    function pick(arr){ for(var i=0;i<arr.length;i++){ var el=$(arr[i]); if(el) return el; } return null; }
+    function numOf(el){ if(!el) return NaN; var v=(el.value||el.textContent||'').toString().replace(',','.'); var n=parseFloat(v); return isNaN(n)?NaN:n; }
+    function setNum(el, n){
+      if(!el || isNaN(n)) return;
+      if('value' in el) el.value = (Math.round(n*100)/100).toString().replace('.',',');
+      else el.textContent = (Math.round(n*100)/100).toString().replace('.',',');
+      el.dispatchEvent(new Event('input', {bubbles:true}));
+      el.dispatchEvent(new Event('change', {bubbles:true}));
+    }
+
+    var pageSaisie = pick(['#page-saisie','[data-app-root]','main','#content','.content']) || document;
+    var cadenceInput = pick([
+      '#cadence','[name="cadence"]','input[id*="cadence" i]','input[name*="cadence" i]',
+      'input[aria-label*="cadence" i]'
+    ]);
+    var oeeInput = pick([
+      '#oee-cible','[name="oee-cible"]','input[id*="oee" i]','input[name*="oee" i]','input[aria-label*="oee" i]'
+    ]);
+
+    if(!cadenceInput) cadenceInput = pick(['[data-cadence]','span[id*="cadence" i]','div[id*="cadence" i]']);
+    if(!oeeInput)     oeeInput     = pick(['[data-oee]','span[id*="oee" i]','div[id*="oee" i]']);
+
+    var base = {
+      cadence: numOf(cadenceInput),
+      oee:     numOf(oeeInput)
+    };
+
+    if(isNaN(base.cadence)) base.cadence = 100;
+    if(isNaN(base.oee))     base.oee     = 80;
+
+    var profiles = {
+      '':           function(){ return {cadence: base.cadence, oee: base.oee}; },
+      'jour-standard': function(){ return {cadence: base.cadence,            oee: base.oee}; },
+      'soir-haute':    function(){ return {cadence: base.cadence*1.10,       oee: Math.min(100, base.oee+5)}; },
+      'nuit-maint':    function(){ return {cadence: base.cadence*0.70,       oee: Math.max(0,  base.oee-15)}; }
+    };
+
+    function applyProfile(key){
+      var calc = (profiles[key]||profiles[''])();
+      setNum(cadenceInput, calc.cadence);
+      setNum(oeeInput,     calc.oee);
+      try { localStorage.setItem('prodtrack_profil_actif', key); } catch(e){}
+      var note = $('#profil-note');
+      if(note){
+        var txt = {
+          '': 'La sélection ajuste automatiquement la cadence et l’OEE cible.',
+          'jour-standard':'Profil “Jour – Standard” appliqué.',
+          'soir-haute':'Profil “Soir – Haute cadence” appliqué (+10% cadence, +5 pts OEE).',
+          'nuit-maint':'Profil “Nuit – Maintenance” appliqué (-30% cadence, -15 pts OEE).'
+        }[key] || 'Profil appliqué.';
+        note.textContent = txt;
+      }
+    }
+
+    var select = $('#profil-actif');
+    if(!select) return;
+
+    var saved = '';
+    try { saved = localStorage.getItem('prodtrack_profil_actif') || ''; } catch(e){}
+    if(saved && select.querySelector('option[value="'+saved+'"]')) {
+      select.value = saved;
+      applyProfile(saved);
+    }
+
+    select.addEventListener('change', function(){
+      applyProfile(select.value || '');
+    });
+
+  }catch(err){
+    console.warn('Profil actif init skipped:', err);
   }
 })();
 </script>
