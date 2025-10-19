@@ -3165,5 +3165,32 @@
   }
 })();
 </script>
+<script>
+(function(){
+  try {
+    var histo = document.getElementById('page-histo');
+    if (!histo) return;
+    var headers = histo.querySelectorAll('tr, thead');
+    headers.forEach(function(el){
+      var txt = (el.textContent || '').toLowerCase();
+      if (
+        txt.includes('date') &&
+        txt.includes('heure') &&
+        txt.includes('ligne') &&
+        txt.includes('type') &&
+        txt.includes('catégorie') &&
+        txt.includes('cause') &&
+        txt.includes('détail') &&
+        txt.includes('durée') &&
+        txt.includes('opérateur')
+      ){
+        el.remove();
+      }
+    });
+  } catch(e){
+    console.warn('Clean extra header skipped:', e);
+  }
+})();
+</script>
 </body>
 </html>
