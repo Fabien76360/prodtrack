@@ -1251,6 +1251,44 @@
 
     <section id="page-params" role="region" aria-label="Paramétrage" style="display:none; padding:16px;">
       <h2>Paramétrage</h2>
+      <div id="params-content" style="display:flex;flex-direction:column;gap:16px;max-width:1200px;margin:0 auto 24px;">
+        <p style="margin:0;color:var(--text-secondary);font-size:0.95rem;">Ajustez les métriques, règles et référentiels utilisés par la saisie opérateur. Les changements sont sauvegardés automatiquement.</p>
+
+        <details id="params-metrics" style="background:var(--card);border-radius:16px;padding:16px;border:1px solid rgba(148,163,184,0.2);" open>
+          <summary style="cursor:pointer;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;display:flex;align-items:center;gap:8px;">📏 Metrics</summary>
+          <div id="params-metrics-body" style="margin-top:16px;display:flex;flex-direction:column;gap:12px;"></div>
+        </details>
+
+        <details id="params-rules" style="background:var(--card);border-radius:16px;padding:16px;border:1px solid rgba(148,163,184,0.2);">
+          <summary style="cursor:pointer;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;display:flex;align-items:center;gap:8px;">🧠 Règles dynamiques</summary>
+          <div id="params-rules-body" style="margin-top:16px;display:flex;flex-direction:column;gap:12px;"></div>
+        </details>
+
+        <details id="params-taxonomy" style="background:var(--card);border-radius:16px;padding:16px;border:1px solid rgba(148,163,184,0.2);" open>
+          <summary style="cursor:pointer;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;display:flex;align-items:center;gap:8px;">⚙️ Taxonomie Type &gt; Catégorie &gt; Cause</summary>
+          <div id="params-taxonomy-body" style="margin-top:16px;display:flex;flex-direction:column;gap:12px;"></div>
+        </details>
+
+        <details id="params-assets" style="background:var(--card);border-radius:16px;padding:16px;border:1px solid rgba(148,163,184,0.2);">
+          <summary style="cursor:pointer;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;display:flex;align-items:center;gap:8px;">🧩 Équipements &amp; sous-ensembles</summary>
+          <div id="params-assets-body" style="margin-top:16px;display:flex;flex-direction:column;gap:12px;"></div>
+        </details>
+
+        <details id="params-export" style="background:var(--card);border-radius:16px;padding:16px;border:1px solid rgba(148,163,184,0.2);">
+          <summary style="cursor:pointer;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;display:flex;align-items:center;gap:8px;">🧾 Export &amp; nommage</summary>
+          <div id="params-export-body" style="margin-top:16px;display:flex;flex-direction:column;gap:12px;"></div>
+        </details>
+
+        <details id="params-teams" style="background:var(--card);border-radius:16px;padding:16px;border:1px solid rgba(148,163,184,0.2);">
+          <summary style="cursor:pointer;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;display:flex;align-items:center;gap:8px;">👥 Équipes &amp; créneaux</summary>
+          <div id="params-teams-body" style="margin-top:16px;display:flex;flex-direction:column;gap:12px;"></div>
+        </details>
+
+        <details id="params-config-io" style="background:var(--card);border-radius:16px;padding:16px;border:1px solid rgba(148,163,184,0.2);">
+          <summary style="cursor:pointer;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;display:flex;align-items:center;gap:8px;">💾 Gestion configuration</summary>
+          <div id="params-config-io-body" style="margin-top:16px;display:flex;flex-direction:column;gap:12px;"></div>
+        </details>
+      </div>
       <button id="btn-back-from-params" type="button">Retour</button>
     </section>
 </div>
@@ -1264,6 +1302,7 @@
     const STORAGE_KEYS = {
         line: 'prodtrack:v1:line',
         config: 'prodtrack:v1:config',
+        configBackup: 'prodtrack:v1:config:backup',
         sidebar: 'pp:sidebar',
         day: (date, line) => `prodtrack:v1:day:${date}:${line || 'sans-ligne'}`,
         seq: (date, line, eq) => `prodtrack:v1:seq:${date}:${line || 'sans-ligne'}:${eq || 'NA'}`,
@@ -1413,11 +1452,14 @@
                     { slug: 'vis', label: 'Visée' }
                 ]
             }
-        ]
+        ],
+        team_shifts: TEAM_SHIFTS.map(shift => ({ ...shift }))
     };
 
+    const deepClone = (value) => JSON.parse(JSON.stringify(value));
+
     function withConfigDefaults(input) {
-        const base = JSON.parse(JSON.stringify(defaultConfig));
+        const base = deepClone(defaultConfig);
         if (!input || typeof input !== 'object') {
             return base;
         }
@@ -1500,6 +1542,63 @@
     let additionHistory = [];
     let hourQuantities = {};
     let lineClosures = [];
+
+    const RULE_FIELD_KEYS = Object.keys(FIELD_DEFS);
+
+    const paramsPageState = {
+        root: document.getElementById('page-params'),
+        active: false,
+        initialized: false,
+        listeners: [],
+        containers: {}
+    };
+
+    function registerParamsListener(target, type, handler) {
+        if (!target || !handler) return;
+        target.addEventListener(type, handler);
+        paramsPageState.listeners.push(() => {
+            target.removeEventListener(type, handler);
+        });
+    }
+
+    function clearParamsListeners() {
+        while (paramsPageState.listeners.length) {
+            const dispose = paramsPageState.listeners.pop();
+            try {
+                dispose();
+            } catch (err) {
+                console.warn('Params listener cleanup failed:', err);
+            }
+        }
+        paramsPageState.initialized = false;
+    }
+
+    function getConfiguredTeamShifts() {
+        if (activeConfig && Array.isArray(activeConfig.team_shifts) && activeConfig.team_shifts.length) {
+            return activeConfig.team_shifts;
+        }
+        return TEAM_SHIFTS;
+    }
+
+    function escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>"']/g, (char) => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;'
+        })[char] || char);
+    }
+
+    function moveArrayItem(array, fromIndex, toIndex) {
+        if (!Array.isArray(array)) return array;
+        if (fromIndex === toIndex) return array;
+        if (fromIndex < 0 || fromIndex >= array.length) return array;
+        if (toIndex < 0 || toIndex >= array.length) return array;
+        const item = array.splice(fromIndex, 1)[0];
+        array.splice(toIndex, 0, item);
+        return array;
+    }
 
     const today = new Date();
     const currentDate = today.toISOString().slice(0, 10);
@@ -1945,10 +2044,24 @@
         showToast('Période de fermeture ajoutée.');
     }
 
-    function showToast(message) {
+    function showToast(message, type) {
+        if (!toast) return;
+        var palette = {
+            success: { bg: 'rgba(16, 185, 129, 0.85)', color: '#0f172a', shadow: '0 15px 30px rgba(16, 185, 129, 0.35)' },
+            error: { bg: 'rgba(239, 68, 68, 0.9)', color: '#fff', shadow: '0 15px 30px rgba(239, 68, 68, 0.35)' },
+            warning: { bg: 'rgba(250, 204, 21, 0.9)', color: '#0f172a', shadow: '0 15px 30px rgba(250, 204, 21, 0.35)' },
+            info: { bg: 'rgba(96, 165, 250, 0.85)', color: '#0f172a', shadow: '0 15px 30px rgba(96, 165, 250, 0.35)' }
+        }[type || 'success'];
+        if (!palette) {
+            palette = { bg: 'rgba(16, 185, 129, 0.85)', color: '#0f172a', shadow: '0 15px 30px rgba(16, 185, 129, 0.35)' };
+        }
+        toast.style.background = palette.bg;
+        toast.style.color = palette.color;
+        toast.style.boxShadow = palette.shadow;
         toast.textContent = message;
         toast.classList.add('show');
-        setTimeout(() => toast.classList.remove('show'), 2200);
+        clearTimeout(showToast._timer);
+        showToast._timer = setTimeout(() => toast.classList.remove('show'), 2200);
     }
 
     function updateSaveStatus(saved) {
@@ -1969,7 +2082,9 @@
     }
 
     function getTeamById(id) {
-        return TEAM_SHIFTS.find(team => team.id === id) || TEAM_SHIFTS[0];
+        const shifts = getConfiguredTeamShifts();
+        if (!shifts.length) return null;
+        return shifts.find(team => team.id === id) || shifts[0];
     }
 
     function getHoursForTeam(team) {
@@ -1990,7 +2105,8 @@
         const previousSelection = selectedTeamId;
         let hasPreviousSelection = false;
         teamSelect.innerHTML = '';
-        TEAM_SHIFTS.forEach(team => {
+        const shifts = getConfiguredTeamShifts();
+        shifts.forEach(team => {
             const option = document.createElement('option');
             option.value = team.id;
             option.textContent = team.label;
@@ -1999,12 +2115,18 @@
             }
             teamSelect.appendChild(option);
         });
+        if (!shifts.length) {
+            selectedTeamId = null;
+            return;
+        }
         if (hasPreviousSelection) {
             teamSelect.value = previousSelection;
+            selectedTeamId = previousSelection;
         } else {
-            teamSelect.value = TEAM_SHIFTS[0].id;
+            const fallbackId = shifts[0].id;
+            teamSelect.value = fallbackId;
+            selectedTeamId = fallbackId;
         }
-        selectedTeamId = teamSelect.value || TEAM_SHIFTS[0].id;
     }
 
     function generateTimeSlots() {
@@ -2113,7 +2235,1345 @@
     }
 
     function persistConfig() {
-        localStorage.setItem(STORAGE_KEYS.config, JSON.stringify(activeConfig));
+        if (!activeConfig) return;
+        try {
+            localStorage.setItem(STORAGE_KEYS.config, JSON.stringify(activeConfig));
+        } catch (e) {
+            console.warn('Persist config failed:', e);
+        }
+        try {
+            localStorage.setItem(STORAGE_KEYS.configBackup, JSON.stringify(activeConfig));
+        } catch (e) {
+            console.warn('Backup config failed:', e);
+        }
+    }
+
+    function broadcastConfigUpdated(meta) {
+        try {
+            const detail = { config: deepClone(activeConfig) };
+            if (meta) {
+                detail.meta = meta;
+            }
+            window.dispatchEvent(new CustomEvent('config:updated', { detail }));
+        } catch (err) {
+            console.warn('Config broadcast failed:', err);
+        }
+    }
+
+    function normalizeConfig(input) {
+        const normalized = withConfigDefaults(input || {});
+        const metrics = normalized.metrics || {};
+        metrics.hourly_target_quantity = Number.isFinite(Number(metrics.hourly_target_quantity))
+            ? Number(metrics.hourly_target_quantity)
+            : 0;
+        metrics.oee_target = Number.isFinite(Number(metrics.oee_target))
+            ? Number(metrics.oee_target)
+            : 0;
+        metrics.minutes_tolerance = Number.isFinite(Number(metrics.minutes_tolerance))
+            ? Number(metrics.minutes_tolerance)
+            : 0;
+        metrics.quantity_tolerance = Number.isFinite(Number(metrics.quantity_tolerance))
+            ? Number(metrics.quantity_tolerance)
+            : 0;
+        normalized.metrics = metrics;
+
+        normalized.rules = (normalized.rules || []).map((rule) => {
+            const requires = Array.from(new Set((rule?.requires || []).map((key) => String(key || '').trim()).filter(Boolean)));
+            const optional = Array.from(new Set((rule?.optional || []).map((key) => String(key || '').trim()).filter((key) => key && !requires.includes(key))));
+            return {
+                when: { type: String(rule?.when?.type || '').trim() },
+                requires,
+                optional
+            };
+        });
+
+        normalized.types = (normalized.types || []).map((type) => {
+            const typeName = String(type?.name || '').trim();
+            const categories = (type?.categories || []).map((cat) => {
+                const catName = String(cat?.name || '').trim();
+                const causes = (cat?.causes || []).map((cause) => {
+                    const causeName = String(cause?.name || '').trim();
+                    const details = Array.isArray(cause?.details)
+                        ? cause.details.map((detail) => String(detail || '').trim()).filter(Boolean)
+                        : [];
+                    return {
+                        name: causeName,
+                        details: details.length ? details : ['*']
+                    };
+                });
+                return { name: catName, causes };
+            });
+            return { name: typeName, categories };
+        });
+
+        normalized.assets = (normalized.assets || []).map((asset) => {
+            const subsets = (asset?.subsets || []).map((subset) => ({
+                slug: String(subset?.slug || '').trim(),
+                label: String(subset?.label || '').trim()
+            }));
+            return {
+                code: String(asset?.code || '').trim(),
+                label: String(asset?.label || '').trim(),
+                subsets
+            };
+        });
+
+        if (!normalized.export || typeof normalized.export !== 'object') {
+            normalized.export = deepClone(defaultConfig.export);
+        }
+        normalized.export.filename = String(normalized.export.filename || defaultConfig.export.filename || '').trim() || defaultConfig.export.filename;
+        normalized.export.csv_columns = Array.isArray(normalized.export.csv_columns)
+            ? normalized.export.csv_columns.map((col) => String(col || '').trim()).filter(Boolean)
+            : deepClone(defaultConfig.export.csv_columns);
+
+        if (!normalized.prefix_map || typeof normalized.prefix_map !== 'object') {
+            normalized.prefix_map = {};
+        } else {
+            const entries = Object.entries(normalized.prefix_map || {});
+            const mapped = {};
+            entries.forEach(([key, value]) => {
+                const trimmedKey = String(key || '').trim();
+                if (!trimmedKey) return;
+                mapped[trimmedKey] = String(value || '').trim();
+            });
+            normalized.prefix_map = mapped;
+        }
+
+        if (Array.isArray(normalized.team_shifts)) {
+            normalized.team_shifts = normalized.team_shifts.map((shift) => ({
+                id: String(shift?.id || '').trim(),
+                label: String(shift?.label || '').trim(),
+                start: shift?.start === undefined || shift?.start === null ? null : Number(shift.start),
+                end: shift?.end === undefined || shift?.end === null ? null : Number(shift.end),
+                fullDay: Boolean(shift?.fullDay)
+            }));
+        }
+
+        return normalized;
+    }
+
+    function validateConfig(config) {
+        if (!config) {
+            return 'Configuration vide.';
+        }
+
+        const metrics = config.metrics || {};
+        if (!Number.isFinite(metrics.hourly_target_quantity) || metrics.hourly_target_quantity < 0) {
+            return 'Quantité cible horaire invalide.';
+        }
+        if (!Number.isFinite(metrics.oee_target) || metrics.oee_target < 0 || metrics.oee_target > 100) {
+            return 'OEE cible doit être compris entre 0 et 100.';
+        }
+        if (!Number.isFinite(metrics.minutes_tolerance) || metrics.minutes_tolerance < 0) {
+            return 'Tolérance minutes invalide.';
+        }
+        if (!Number.isFinite(metrics.quantity_tolerance) || metrics.quantity_tolerance < 0) {
+            return 'Tolérance quantité invalide.';
+        }
+
+        if (!Array.isArray(config.types) || !config.types.length) {
+            return 'Définir au moins un type.';
+        }
+        const typeNames = new Set();
+        for (const type of config.types) {
+            const typeName = String(type?.name || '').trim();
+            if (!typeName) {
+                return 'Nom de type requis.';
+            }
+            if (typeNames.has(typeName)) {
+                return `Type en double : ${typeName}`;
+            }
+            typeNames.add(typeName);
+
+            if (!Array.isArray(type?.categories) || !type.categories.length) {
+                return `Catégories manquantes pour le type ${typeName}.`;
+            }
+            const categoryNames = new Set();
+            for (const category of type.categories) {
+                const catName = String(category?.name || '').trim();
+                if (!catName) {
+                    return `Nom de catégorie requis pour le type ${typeName}.`;
+                }
+                if (categoryNames.has(catName)) {
+                    return `Catégorie en double pour ${typeName} : ${catName}`;
+                }
+                categoryNames.add(catName);
+
+                if (!Array.isArray(category?.causes) || !category.causes.length) {
+                    return `Causes manquantes pour la catégorie ${catName}.`;
+                }
+                const causeNames = new Set();
+                for (const cause of category.causes) {
+                    const causeName = String(cause?.name || '').trim();
+                    if (!causeName) {
+                        return `Nom de cause requis pour ${catName}.`;
+                    }
+                    if (causeNames.has(causeName)) {
+                        return `Cause en double pour ${catName} : ${causeName}`;
+                    }
+                    causeNames.add(causeName);
+
+                    if (!Array.isArray(cause?.details)) {
+                        return `Détails manquants pour la cause ${causeName}.`;
+                    }
+                }
+            }
+        }
+
+        if (!Array.isArray(config.rules)) {
+            return 'Règles invalides.';
+        }
+        for (const rule of config.rules) {
+            const typeName = String(rule?.when?.type || '').trim();
+            if (!typeName) {
+                return 'Chaque règle doit cibler un type.';
+            }
+            if (!typeNames.has(typeName)) {
+                return `Le type ${typeName} n'existe pas dans la taxonomie.`;
+            }
+            const allFields = new Set([...RULE_FIELD_KEYS]);
+            const requires = rule?.requires || [];
+            const optional = rule?.optional || [];
+            for (const key of [...requires, ...optional]) {
+                if (!allFields.has(key)) {
+                    return `Champ ${key} invalide dans les règles.`;
+                }
+            }
+        }
+
+        if (!Array.isArray(config.assets)) {
+            return 'Liste des équipements invalide.';
+        }
+        const equipmentCodes = new Set();
+        for (const asset of config.assets) {
+            const code = String(asset?.code || '').trim();
+            if (!code) {
+                return 'Code équipement requis.';
+            }
+            if (equipmentCodes.has(code)) {
+                return `Code équipement en double : ${code}`;
+            }
+            equipmentCodes.add(code);
+
+            const subsetSlugs = new Set();
+            for (const subset of asset?.subsets || []) {
+                const slug = String(subset?.slug || '').trim();
+                if (!slug) {
+                    return `Slug de sous-ensemble manquant pour ${code}.`;
+                }
+                if (subsetSlugs.has(slug)) {
+                    return `Slug de sous-ensemble en double pour ${code} : ${slug}`;
+                }
+                subsetSlugs.add(slug);
+            }
+        }
+
+        if (!config.export || !Array.isArray(config.export.csv_columns) || !config.export.csv_columns.length) {
+            return 'Définir au moins une colonne d’export.';
+        }
+
+        if (config.prefix_map && typeof config.prefix_map === 'object') {
+            const seenPrefixes = new Set();
+            for (const [key, value] of Object.entries(config.prefix_map)) {
+                const trimmedKey = String(key || '').trim();
+                if (!trimmedKey) {
+                    return 'Chaque préfixe doit être associé à un type.';
+                }
+                if (seenPrefixes.has(trimmedKey)) {
+                    return `Préfixe du type ${trimmedKey} en double.`;
+                }
+                seenPrefixes.add(trimmedKey);
+                const val = String(value || '').trim();
+                if (!val || val.length !== 3) {
+                    return `Préfixe pour ${trimmedKey} invalide (3 caractères attendus).`;
+                }
+            }
+        }
+
+        if (Array.isArray(config.team_shifts)) {
+            const shiftIds = new Set();
+            for (const shift of config.team_shifts) {
+                const id = String(shift?.id || '').trim();
+                if (!id) {
+                    return 'Identifiant d’équipe requis.';
+                }
+                if (shiftIds.has(id)) {
+                    return `Identifiant d’équipe en double : ${id}`;
+                }
+                shiftIds.add(id);
+                if (!shift.fullDay) {
+                    if (!Number.isFinite(Number(shift.start)) || !Number.isFinite(Number(shift.end))) {
+                        return `Horaires invalides pour l’équipe ${id}.`;
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
+    function renderParamsPageIfActive() {
+        if (paramsPageState.active) {
+            renderParamsPage();
+        }
+    }
+
+    function saveConfig(partialUpdater, options) {
+        const opts = options || {};
+        const skipRender = Boolean(opts.skipRender);
+        const base = activeConfig ? deepClone(activeConfig) : withConfigDefaults();
+        let draft = base;
+
+        if (typeof partialUpdater === 'function') {
+            const result = partialUpdater(draft);
+            if (result && typeof result === 'object') {
+                draft = result;
+            }
+        } else if (partialUpdater && typeof partialUpdater === 'object') {
+            draft = { ...draft, ...partialUpdater };
+        }
+
+        const normalized = normalizeConfig(draft);
+        const validationError = validateConfig(normalized);
+        if (validationError) {
+            showToast(validationError, 'error');
+            renderParamsPageIfActive();
+            return false;
+        }
+
+        activeConfig = normalized;
+        persistConfig();
+        if (!skipRender) {
+            renderParamsPageIfActive();
+        }
+        broadcastConfigUpdated({ skipRender: skipRender });
+
+        if (!opts.silent) {
+            showToast(opts.successMessage || 'Paramètres sauvegardés', opts.toastType || 'success');
+        }
+        return true;
+    }
+
+    function ensureParamsContainers() {
+        if (!paramsPageState.root) return;
+        paramsPageState.containers = {
+            metrics: document.getElementById('params-metrics-body'),
+            rules: document.getElementById('params-rules-body'),
+            taxonomy: document.getElementById('params-taxonomy-body'),
+            assets: document.getElementById('params-assets-body'),
+            export: document.getElementById('params-export-body'),
+            teams: document.getElementById('params-teams-body'),
+            config: document.getElementById('params-config-io-body')
+        };
+    }
+
+    function renderParamsPage() {
+        ensureParamsContainers();
+        renderMetricsSection();
+        renderRulesSection();
+        renderTaxonomySection();
+        renderAssetsSection();
+        renderExportSection();
+        renderTeamsSection();
+        renderConfigIOSection();
+    }
+
+    function renderMetricsSection() {
+        const container = paramsPageState.containers.metrics;
+        if (!container) return;
+        const metrics = activeConfig?.metrics || defaultConfig.metrics;
+        const safeMetrics = {
+            hourly_target_quantity: Number(metrics?.hourly_target_quantity ?? defaultConfig.metrics.hourly_target_quantity),
+            oee_target: Number(metrics?.oee_target ?? defaultConfig.metrics.oee_target),
+            minutes_tolerance: Number(metrics?.minutes_tolerance ?? defaultConfig.metrics.minutes_tolerance),
+            quantity_tolerance: Number(metrics?.quantity_tolerance ?? defaultConfig.metrics.quantity_tolerance)
+        };
+
+        const fields = [
+            {
+                key: 'hourly_target_quantity',
+                label: 'Quantité cible horaire',
+                help: 'Unités par heure',
+                min: 0,
+                step: 1
+            },
+            {
+                key: 'oee_target',
+                label: 'OEE cible (%)',
+                help: '0 à 100%',
+                min: 0,
+                max: 100,
+                step: 0.1
+            },
+            {
+                key: 'minutes_tolerance',
+                label: 'Tolérance minutes',
+                help: 'Minutes acceptées sans alerte',
+                min: 0,
+                step: 1
+            },
+            {
+                key: 'quantity_tolerance',
+                label: 'Tolérance quantité',
+                help: 'Unités d’écart acceptées',
+                min: 0,
+                step: 1
+            }
+        ];
+
+        const inputs = fields.map((field) => {
+            const value = Number.isFinite(safeMetrics[field.key]) ? safeMetrics[field.key] : '';
+            const attributes = [
+                `type="number"`,
+                `data-metric="${field.key}"`,
+                field.min !== undefined ? `min="${field.min}"` : '',
+                field.max !== undefined ? `max="${field.max}"` : '',
+                field.step !== undefined ? `step="${field.step}"` : '',
+                `value="${value}"`
+            ].filter(Boolean).join(' ');
+            return `
+                <label style="display:flex;flex-direction:column;gap:6px;background:rgba(15,23,42,0.35);padding:12px;border-radius:12px;border:1px solid rgba(148,163,184,0.2);">
+                    <span style="font-weight:600;">${field.label}</span>
+                    <input ${attributes} style="padding:10px;border-radius:10px;border:1px solid rgba(148,163,184,0.25);background:rgba(15,23,42,0.6);color:var(--text);">
+                    <small style="opacity:.7;">${field.help}</small>
+                </label>`;
+        }).join('');
+
+        container.innerHTML = `
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;">
+                ${inputs}
+            </div>
+            <div style="display:flex;justify-content:flex-end;margin-top:12px;">
+                <button type="button" class="secondary" data-action="metrics-reset">Restaurer valeurs par défaut</button>
+            </div>
+        `;
+    }
+
+    function renderRulesSection() {
+        const container = paramsPageState.containers.rules;
+        if (!container) return;
+        const rules = activeConfig?.rules || [];
+        const types = (activeConfig?.types || []).map((type) => type.name);
+
+        const ruleCards = rules.map((rule, index) => {
+            const requiresSet = new Set(rule?.requires || []);
+            const optionalSet = new Set(rule?.optional || []);
+            const typeOptions = [''].concat(types).map((typeName) => {
+                const selected = typeName === (rule?.when?.type || '') ? 'selected' : '';
+                const label = typeName || '—';
+                return `<option value="${typeName}">${label}</option>`;
+            }).join('');
+
+            const checkboxGroup = (role) => RULE_FIELD_KEYS.map((fieldKey) => {
+                const def = FIELD_DEFS[fieldKey];
+                const checked = role === 'require' ? requiresSet.has(fieldKey) : optionalSet.has(fieldKey);
+                return `<label style="display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:8px;background:rgba(15,23,42,0.25);">
+                    <input type="checkbox" data-role="${role}" data-field="${fieldKey}" ${checked ? 'checked' : ''}>
+                    <span>${def?.label || fieldKey}</span>
+                </label>`;
+            }).join('');
+
+            return `
+                <div data-rule-index="${index}" style="display:flex;flex-direction:column;gap:12px;padding:16px;border-radius:14px;border:1px solid rgba(148,163,184,0.2);background:rgba(15,23,42,0.35);">
+                    <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;">
+                        <label style="flex:1;min-width:220px;display:flex;flex-direction:column;gap:6px;">
+                            <span style="font-weight:600;">Type concerné</span>
+                            <select data-role="rule-type" style="padding:10px;border-radius:10px;border:1px solid rgba(148,163,184,0.25);background:rgba(15,23,42,0.6);color:var(--text);">
+                                ${typeOptions}
+                            </select>
+                        </label>
+                        <div style="display:flex;gap:8px;">
+                            <button type="button" class="secondary" data-action="rule-duplicate">Dupliquer</button>
+                            <button type="button" class="danger" data-action="rule-delete">Supprimer</button>
+                        </div>
+                    </div>
+                    <div style="display:flex;flex-wrap:wrap;gap:16px;">
+                        <div style="flex:1;min-width:240px;display:flex;flex-direction:column;gap:8px;">
+                            <span style="font-size:0.85rem;opacity:.75;font-weight:600;">Champs obligatoires</span>
+                            <div style="display:flex;flex-wrap:wrap;gap:8px;">
+                                ${checkboxGroup('require')}
+                            </div>
+                        </div>
+                        <div style="flex:1;min-width:240px;display:flex;flex-direction:column;gap:8px;">
+                            <span style="font-size:0.85rem;opacity:.75;font-weight:600;">Champs optionnels</span>
+                            <div style="display:flex;flex-wrap:wrap;gap:8px;">
+                                ${checkboxGroup('optional')}
+                            </div>
+                        </div>
+                    </div>
+                </div>`;
+        }).join('');
+
+        container.innerHTML = `
+            <div style="display:flex;flex-direction:column;gap:12px;">
+                ${rules.length ? ruleCards : '<p style="opacity:.75;">Aucune règle définie pour l’instant.</p>'}
+                <div style="display:flex;justify-content:flex-end;">
+                    <button type="button" class="secondary" data-action="rules-add">Ajouter une règle</button>
+                </div>
+            </div>
+        `;
+    }
+
+    function renderTaxonomySection() {
+        const container = paramsPageState.containers.taxonomy;
+        if (!container) return;
+        const types = activeConfig?.types || [];
+
+        const typeBlocks = types.map((type, typeIndex) => {
+            const categoryBlocks = (type?.categories || []).map((category, categoryIndex) => {
+                const causeBlocks = (category?.causes || []).map((cause, causeIndex) => {
+                    const detailValue = Array.isArray(cause?.details) ? escapeHtml(cause.details.join('\n')) : '';
+                    return `
+                        <div data-cause-index="${causeIndex}" style="display:flex;flex-direction:column;gap:10px;padding:12px;border-radius:12px;border:1px solid rgba(148,163,184,0.2);background:rgba(15,23,42,0.25);">
+                            <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;">
+                                <label style="flex:1;min-width:200px;display:flex;flex-direction:column;gap:6px;">
+                                    <span style="font-weight:600;">Cause</span>
+                                    <input type="text" data-field="cause-name" value="${escapeHtml(cause?.name || '')}" style="padding:8px 10px;border-radius:10px;border:1px solid rgba(148,163,184,0.25);background:rgba(15,23,42,0.6);color:var(--text);">
+                                </label>
+                                <div style="display:flex;gap:6px;">
+                                    <button type="button" class="secondary" data-action="cause-up">↑</button>
+                                    <button type="button" class="secondary" data-action="cause-down">↓</button>
+                                    <button type="button" class="danger" data-action="cause-delete">Supprimer</button>
+                                </div>
+                            </div>
+                            <label style="display:flex;flex-direction:column;gap:6px;">
+                                <span style="font-size:0.85rem;opacity:.75;">Détails (un par ligne)</span>
+                                <textarea data-field="cause-details" rows="3" style="resize:vertical;padding:10px;border-radius:10px;border:1px solid rgba(148,163,184,0.25);background:rgba(15,23,42,0.55);color:var(--text);">${detailValue}</textarea>
+                            </label>
+                        </div>`;
+                }).join('');
+
+                return `
+                    <div data-category-index="${categoryIndex}" style="display:flex;flex-direction:column;gap:12px;padding:14px;border-radius:14px;border:1px solid rgba(148,163,184,0.2);background:rgba(15,23,42,0.3);">
+                        <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;">
+                            <label style="flex:1;min-width:200px;display:flex;flex-direction:column;gap:6px;">
+                                <span style="font-weight:600;">Catégorie</span>
+                                <input type="text" data-field="category-name" value="${escapeHtml(category?.name || '')}" style="padding:8px 10px;border-radius:10px;border:1px solid rgba(148,163,184,0.25);background:rgba(15,23,42,0.6);color:var(--text);">
+                            </label>
+                            <div style="display:flex;gap:6px;">
+                                <button type="button" class="secondary" data-action="category-up">↑</button>
+                                <button type="button" class="secondary" data-action="category-down">↓</button>
+                                <button type="button" class="secondary" data-action="category-add-cause">+ Cause</button>
+                                <button type="button" class="danger" data-action="category-delete">Supprimer</button>
+                            </div>
+                        </div>
+                        <div style="display:flex;flex-direction:column;gap:10px;">
+                            ${causeBlocks || '<p style="opacity:.7;margin:0;">Aucune cause pour le moment.</p>'}
+                        </div>
+                    </div>`;
+            }).join('');
+
+            return `
+                <div data-type-index="${typeIndex}" style="display:flex;flex-direction:column;gap:16px;padding:18px;border-radius:16px;border:1px solid rgba(148,163,184,0.25);background:rgba(15,23,42,0.38);">
+                    <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;">
+                        <label style="flex:1;min-width:220px;display:flex;flex-direction:column;gap:6px;">
+                            <span style="font-weight:600;">Type</span>
+                            <input type="text" data-field="type-name" value="${escapeHtml(type?.name || '')}" style="padding:10px;border-radius:10px;border:1px solid rgba(148,163,184,0.25);background:rgba(15,23,42,0.6);color:var(--text);">
+                        </label>
+                        <div style="display:flex;gap:6px;">
+                            <button type="button" class="secondary" data-action="type-up">↑</button>
+                            <button type="button" class="secondary" data-action="type-down">↓</button>
+                            <button type="button" class="secondary" data-action="type-add-category">+ Catégorie</button>
+                            <button type="button" class="danger" data-action="type-delete">Supprimer</button>
+                        </div>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:14px;">
+                        ${categoryBlocks || '<p style="opacity:.75;margin:0;">Aucune catégorie définie.</p>'}
+                    </div>
+                </div>`;
+        }).join('');
+
+        container.innerHTML = `
+            <div style="display:flex;flex-direction:column;gap:16px;">
+                ${types.length ? typeBlocks : '<p style="opacity:.75;margin:0;">Aucun type défini. Ajoutez-en un pour configurer la taxonomie.</p>'}
+                <div style="display:flex;justify-content:flex-end;">
+                    <button type="button" class="secondary" data-action="type-add">Ajouter un type</button>
+                </div>
+            </div>
+        `;
+    }
+
+    function renderAssetsSection() {
+        const container = paramsPageState.containers.assets;
+        if (!container) return;
+        const assets = activeConfig?.assets || [];
+
+        const assetBlocks = assets.map((asset, assetIndex) => {
+            const subsets = (asset?.subsets || []).map((subset, subsetIndex) => `
+                <div data-subset-index="${subsetIndex}" style="display:flex;flex-direction:column;gap:8px;padding:12px;border-radius:12px;border:1px solid rgba(148,163,184,0.2);background:rgba(15,23,42,0.25);">
+                    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;">
+                        <div style="display:flex;flex-wrap:wrap;gap:10px;flex:1;min-width:220px;">
+                            <label style="display:flex;flex-direction:column;gap:4px;flex:1;min-width:120px;">
+                                <span style="font-size:0.85rem;opacity:.75;">Slug</span>
+                                <input type="text" data-field="subset-slug" value="${escapeHtml(subset?.slug || '')}" style="padding:8px 10px;border-radius:10px;border:1px solid rgba(148,163,184,0.25);background:rgba(15,23,42,0.6);color:var(--text);">
+                            </label>
+                            <label style="display:flex;flex-direction:column;gap:4px;flex:1;min-width:120px;">
+                                <span style="font-size:0.85rem;opacity:.75;">Libellé</span>
+                                <input type="text" data-field="subset-label" value="${escapeHtml(subset?.label || '')}" style="padding:8px 10px;border-radius:10px;border:1px solid rgba(148,163,184,0.25);background:rgba(15,23,42,0.6);color:var(--text);">
+                            </label>
+                        </div>
+                        <div style="display:flex;gap:6px;">
+                            <button type="button" class="secondary" data-action="subset-up">↑</button>
+                            <button type="button" class="secondary" data-action="subset-down">↓</button>
+                            <button type="button" class="danger" data-action="subset-delete">Supprimer</button>
+                        </div>
+                    </div>
+                </div>`).join('');
+
+            return `
+                <div data-asset-index="${assetIndex}" style="display:flex;flex-direction:column;gap:14px;padding:16px;border-radius:16px;border:1px solid rgba(148,163,184,0.25);background:rgba(15,23,42,0.32);">
+                    <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;">
+                        <div style="display:flex;flex-wrap:wrap;gap:12px;flex:1;min-width:260px;">
+                            <label style="display:flex;flex-direction:column;gap:6px;flex:0 0 160px;">
+                                <span style="font-weight:600;">Code</span>
+                                <input type="text" data-field="asset-code" value="${escapeHtml(asset?.code || '')}" style="padding:8px 10px;border-radius:10px;border:1px solid rgba(148,163,184,0.25);background:rgba(15,23,42,0.6);color:var(--text);">
+                            </label>
+                            <label style="display:flex;flex-direction:column;gap:6px;flex:1;">
+                                <span style="font-weight:600;">Libellé</span>
+                                <input type="text" data-field="asset-label" value="${escapeHtml(asset?.label || '')}" style="padding:8px 10px;border-radius:10px;border:1px solid rgba(148,163,184,0.25);background:rgba(15,23,42,0.6);color:var(--text);">
+                            </label>
+                        </div>
+                        <div style="display:flex;gap:6px;">
+                            <button type="button" class="secondary" data-action="asset-up">↑</button>
+                            <button type="button" class="secondary" data-action="asset-down">↓</button>
+                            <button type="button" class="secondary" data-action="subset-add">+ Sous-ensemble</button>
+                            <button type="button" class="danger" data-action="asset-delete">Supprimer</button>
+                        </div>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:10px;">
+                        ${subsets || '<p style="opacity:.75;margin:0;">Aucun sous-ensemble.</p>'}
+                    </div>
+                </div>`;
+        }).join('');
+
+        container.innerHTML = `
+            <div style="display:flex;flex-direction:column;gap:16px;">
+                ${assets.length ? assetBlocks : '<p style="opacity:.75;margin:0;">Aucun équipement configuré.</p>'}
+                <div style="display:flex;justify-content:flex-end;">
+                    <button type="button" class="secondary" data-action="asset-add">Ajouter un équipement</button>
+                </div>
+            </div>
+        `;
+    }
+
+    function renderExportSection() {
+        const container = paramsPageState.containers.export;
+        if (!container) return;
+        const exportCfg = activeConfig?.export || defaultConfig.export;
+        const columns = Array.isArray(exportCfg?.csv_columns) ? exportCfg.csv_columns : [];
+        const prefixEntries = Object.entries(activeConfig?.prefix_map || {});
+
+        const columnRows = columns.map((col, index) => `
+            <div data-column-index="${index}" style="display:flex;gap:10px;align-items:center;padding:8px 10px;border-radius:10px;border:1px solid rgba(148,163,184,0.2);background:rgba(15,23,42,0.25);">
+                <input type="text" data-field="column-name" value="${escapeHtml(col)}" style="flex:1;min-width:160px;padding:8px 10px;border-radius:8px;border:1px solid rgba(148,163,184,0.25);background:rgba(15,23,42,0.55);color:var(--text);">
+                <div style="display:flex;gap:6px;">
+                    <button type="button" class="secondary" data-action="column-up">↑</button>
+                    <button type="button" class="secondary" data-action="column-down">↓</button>
+                    <button type="button" class="danger" data-action="column-delete">Supprimer</button>
+                </div>
+            </div>`).join('');
+
+        const prefixRows = prefixEntries.map(([key, value], index) => `
+            <div data-prefix-index="${index}" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:10px;border-radius:10px;border:1px solid rgba(148,163,184,0.2);background:rgba(15,23,42,0.25);">
+                <label style="flex:1;min-width:160px;display:flex;flex-direction:column;gap:4px;">
+                    <span style="font-size:0.85rem;opacity:.75;">Type</span>
+                    <input type="text" data-field="prefix-key" value="${escapeHtml(key)}" style="padding:8px 10px;border-radius:8px;border:1px solid rgba(148,163,184,0.25);background:rgba(15,23,42,0.55);color:var(--text);">
+                </label>
+                <label style="flex:1;min-width:140px;display:flex;flex-direction:column;gap:4px;">
+                    <span style="font-size:0.85rem;opacity:.75;">Préfixe</span>
+                    <input type="text" data-field="prefix-value" value="${escapeHtml(value)}" style="padding:8px 10px;border-radius:8px;border:1px solid rgba(148,163,184,0.25);background:rgba(15,23,42,0.55);color:var(--text);">
+                </label>
+                <button type="button" class="danger" data-action="prefix-delete">Supprimer</button>
+            </div>`).join('');
+
+        container.innerHTML = `
+            <div style="display:flex;flex-direction:column;gap:16px;">
+                <label style="display:flex;flex-direction:column;gap:6px;">
+                    <span style="font-weight:600;">Nom de fichier export</span>
+                    <input type="text" data-field="export-filename" value="${escapeHtml(exportCfg?.filename || '')}" style="padding:10px;border-radius:10px;border:1px solid rgba(148,163,184,0.25);background:rgba(15,23,42,0.55);color:var(--text);">
+                </label>
+                <div style="display:flex;flex-direction:column;gap:10px;">
+                    <div style="display:flex;align-items:center;justify-content:space-between;">
+                        <span style="font-weight:600;">Colonnes CSV</span>
+                        <button type="button" class="secondary" data-action="column-add">Ajouter une colonne</button>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:8px;">
+                        ${columns.length ? columnRows : '<p style="opacity:.75;margin:0;">Aucune colonne configurée.</p>'}
+                    </div>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:10px;">
+                    <div style="display:flex;align-items:center;justify-content:space-between;">
+                        <span style="font-weight:600;">Préfixes par type</span>
+                        <button type="button" class="secondary" data-action="prefix-add">Ajouter un préfixe</button>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:8px;">
+                        ${prefixEntries.length ? prefixRows : '<p style="opacity:.75;margin:0;">Aucun préfixe défini.</p>'}
+                    </div>
+                </div>
+                <div style="display:flex;justify-content:flex-end;gap:8px;">
+                    <button type="button" class="secondary" data-action="export-reset">Réinitialiser aux valeurs par défaut</button>
+                </div>
+            </div>
+        `;
+    }
+
+    function renderTeamsSection() {
+        const container = paramsPageState.containers.teams;
+        if (!container) return;
+        const shifts = Array.isArray(activeConfig?.team_shifts) ? activeConfig.team_shifts : getConfiguredTeamShifts();
+
+        const shiftBlocks = shifts.map((shift, index) => {
+            const fullDay = Boolean(shift?.fullDay);
+            const startValue = fullDay || shift?.start === null || shift?.start === undefined ? '' : shift.start;
+            const endValue = fullDay || shift?.end === null || shift?.end === undefined ? '' : shift.end;
+            return `
+                <div data-team-index="${index}" style="display:flex;flex-direction:column;gap:12px;padding:14px;border-radius:14px;border:1px solid rgba(148,163,184,0.25);background:rgba(15,23,42,0.32);">
+                    <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;">
+                        <div style="display:flex;flex-wrap:wrap;gap:12px;flex:1;min-width:260px;">
+                            <label style="display:flex;flex-direction:column;gap:4px;flex:0 0 150px;">
+                                <span style="font-weight:600;">Identifiant</span>
+                                <input type="text" data-field="team-id" value="${escapeHtml(shift?.id || '')}" style="padding:8px 10px;border-radius:10px;border:1px solid rgba(148,163,184,0.25);background:rgba(15,23,42,0.55);color:var(--text);">
+                            </label>
+                            <label style="display:flex;flex-direction:column;gap:4px;flex:1;">
+                                <span style="font-weight:600;">Libellé</span>
+                                <input type="text" data-field="team-label" value="${escapeHtml(shift?.label || '')}" style="padding:8px 10px;border-radius:10px;border:1px solid rgba(148,163,184,0.25);background:rgba(15,23,42,0.55);color:var(--text);">
+                            </label>
+                        </div>
+                        <div style="display:flex;gap:6px;">
+                            <button type="button" class="secondary" data-action="team-up">↑</button>
+                            <button type="button" class="secondary" data-action="team-down">↓</button>
+                            <button type="button" class="danger" data-action="team-delete">Supprimer</button>
+                        </div>
+                    </div>
+                    <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;">
+                        <label style="display:flex;flex-direction:column;gap:4px;flex:0 0 120px;">
+                            <span style="font-size:0.85rem;opacity:.75;">Début (h)</span>
+                            <input type="number" data-field="team-start" value="${escapeHtml(startValue)}" ${fullDay ? 'disabled' : ''} min="0" max="23" style="padding:8px 10px;border-radius:10px;border:1px solid rgba(148,163,184,0.25);background:rgba(15,23,42,0.55);color:var(--text);">
+                        </label>
+                        <label style="display:flex;flex-direction:column;gap:4px;flex:0 0 120px;">
+                            <span style="font-size:0.85rem;opacity:.75;">Fin (h)</span>
+                            <input type="number" data-field="team-end" value="${escapeHtml(endValue)}" ${fullDay ? 'disabled' : ''} min="0" max="23" style="padding:8px 10px;border-radius:10px;border:1px solid rgba(148,163,184,0.25);background:rgba(15,23,42,0.55);color:var(--text);">
+                        </label>
+                        <label style="display:flex;align-items:center;gap:6px;">
+                            <input type="checkbox" data-field="team-fullday" ${fullDay ? 'checked' : ''}>
+                            <span>Journée complète</span>
+                        </label>
+                    </div>
+                </div>`;
+        }).join('');
+
+        container.innerHTML = `
+            <div style="display:flex;flex-direction:column;gap:16px;">
+                <p style="opacity:.75;margin:0;">Les créneaux définissent la liste des horaires disponibles et les filtres d’affichage.</p>
+                ${shifts.length ? shiftBlocks : '<p style="opacity:.75;margin:0;">Aucun créneau configuré.</p>'}
+                <div style="display:flex;justify-content:flex-end;">
+                    <button type="button" class="secondary" data-action="team-add">Ajouter une équipe</button>
+                </div>
+            </div>
+        `;
+    }
+
+    function renderConfigIOSection() {
+        const container = paramsPageState.containers.config;
+        if (!container) return;
+        container.innerHTML = `
+            <div style="display:flex;flex-direction:column;gap:12px;">
+                <div style="display:flex;flex-wrap:wrap;gap:8px;">
+                    <button type="button" class="secondary" data-action="config-download">Télécharger la configuration</button>
+                    <button type="button" class="secondary" data-action="config-import">Importer JSON</button>
+                    <button type="button" class="danger" data-action="config-reset">Réinitialiser configuration</button>
+                </div>
+                <div style="display:flex;flex-wrap:wrap;gap:8px;">
+                    <button type="button" class="secondary" data-action="config-save">Sauvegarder maintenant</button>
+                    <button type="button" class="secondary" data-action="config-refresh">Recharger l’UI</button>
+                </div>
+            </div>
+        `;
+    }
+
+    function handleMetricsChange(event) {
+        const target = event.target;
+        if (!target || !target.dataset.metric) return;
+        const key = target.dataset.metric;
+        const rawValue = target.value;
+        const numeric = rawValue === '' ? NaN : Number(rawValue);
+        if (!Number.isFinite(numeric)) {
+            renderParamsPageIfActive();
+            showToast('Valeur numérique invalide.', 'error');
+            return;
+        }
+        saveConfig((draft) => {
+            draft.metrics = draft.metrics || {};
+            draft.metrics[key] = numeric;
+            return draft;
+        });
+    }
+
+    function handleMetricsClick(event) {
+        const action = event.target?.dataset?.action;
+        if (action === 'metrics-reset') {
+            saveConfig((draft) => {
+                draft.metrics = deepClone(defaultConfig.metrics);
+                return draft;
+            }, { successMessage: 'Valeurs métriques restaurées' });
+        }
+    }
+    function handleRulesChange(event) {
+        const target = event.target;
+        const row = target?.closest('[data-rule-index]');
+        if (!row) return;
+        const index = Number(row.dataset.ruleIndex);
+        if (Number.isNaN(index)) return;
+
+        if (target.matches('select[data-role="rule-type"]')) {
+            const value = target.value;
+            const success = saveConfig((draft) => {
+                draft.rules = draft.rules || [];
+                draft.rules[index] = draft.rules[index] || { when: { type: '' }, requires: [], optional: [] };
+                draft.rules[index].when = draft.rules[index].when || {};
+                draft.rules[index].when.type = value;
+                return draft;
+            });
+            if (!success) {
+                renderParamsPageIfActive();
+            }
+            return;
+        }
+
+        const field = target.dataset.field;
+        const role = target.dataset.role;
+        if (!field || !role) return;
+        const checked = target.checked;
+        saveConfig((draft) => {
+            draft.rules = draft.rules || [];
+            draft.rules[index] = draft.rules[index] || { when: { type: '' }, requires: [], optional: [] };
+            const rule = draft.rules[index];
+            rule.requires = Array.isArray(rule.requires) ? rule.requires : [];
+            rule.optional = Array.isArray(rule.optional) ? rule.optional : [];
+            if (role === 'require') {
+                if (checked && !rule.requires.includes(field)) {
+                    rule.requires.push(field);
+                }
+                if (!checked) {
+                    rule.requires = rule.requires.filter((item) => item !== field);
+                }
+                rule.optional = rule.optional.filter((item) => item !== field);
+            } else {
+                if (checked && !rule.optional.includes(field)) {
+                    rule.optional.push(field);
+                }
+                if (!checked) {
+                    rule.optional = rule.optional.filter((item) => item !== field);
+                }
+                rule.requires = rule.requires.filter((item) => item !== field);
+            }
+            return draft;
+        });
+    }
+
+    function handleRulesClick(event) {
+        const action = event.target?.dataset?.action;
+        if (!action) return;
+        if (action === 'rules-add') {
+            const defaultType = (activeConfig?.types || [])[0]?.name || '';
+            saveConfig((draft) => {
+                draft.rules = draft.rules || [];
+                draft.rules.push({ when: { type: defaultType }, requires: [], optional: [] });
+                return draft;
+            }, { successMessage: 'Règle ajoutée' });
+            return;
+        }
+
+        const row = event.target.closest('[data-rule-index]');
+        if (!row) return;
+        const index = Number(row.dataset.ruleIndex);
+        if (Number.isNaN(index)) return;
+
+        if (action === 'rule-delete') {
+            saveConfig((draft) => {
+                draft.rules = draft.rules || [];
+                draft.rules.splice(index, 1);
+                return draft;
+            }, { successMessage: 'Règle supprimée' });
+        } else if (action === 'rule-duplicate') {
+            saveConfig((draft) => {
+                draft.rules = draft.rules || [];
+                const source = draft.rules[index] || { when: { type: '' }, requires: [], optional: [] };
+                const copy = deepClone(source);
+                draft.rules.splice(index + 1, 0, copy);
+                return draft;
+            }, { successMessage: 'Règle dupliquée' });
+        }
+    }
+    function handleTaxonomyInput(event) {
+        const target = event.target;
+        if (!target) return;
+        const typeNode = target.closest('[data-type-index]');
+        if (!typeNode) return;
+        const typeIndex = Number(typeNode.dataset.typeIndex);
+        if (Number.isNaN(typeIndex)) return;
+        const categoryNode = target.closest('[data-category-index]');
+        const causeNode = target.closest('[data-cause-index]');
+        const field = target.dataset.field;
+        if (!field) return;
+
+        saveConfig((draft) => {
+            draft.types = draft.types || [];
+            draft.types[typeIndex] = draft.types[typeIndex] || { name: '', categories: [] };
+            const typeRef = draft.types[typeIndex];
+            typeRef.categories = Array.isArray(typeRef.categories) ? typeRef.categories : [];
+
+            if (field === 'type-name') {
+                typeRef.name = target.value;
+                return draft;
+            }
+
+            if (!categoryNode) return draft;
+            const categoryIndex = Number(categoryNode.dataset.categoryIndex);
+            if (Number.isNaN(categoryIndex)) return draft;
+            typeRef.categories[categoryIndex] = typeRef.categories[categoryIndex] || { name: '', causes: [] };
+            const categoryRef = typeRef.categories[categoryIndex];
+            categoryRef.causes = Array.isArray(categoryRef.causes) ? categoryRef.causes : [];
+
+            if (field === 'category-name') {
+                categoryRef.name = target.value;
+                return draft;
+            }
+
+            if (!causeNode) return draft;
+            const causeIndex = Number(causeNode.dataset.causeIndex);
+            if (Number.isNaN(causeIndex)) return draft;
+            categoryRef.causes[causeIndex] = categoryRef.causes[causeIndex] || { name: '', details: ['*'] };
+            const causeRef = categoryRef.causes[causeIndex];
+
+            if (field === 'cause-name') {
+                causeRef.name = target.value;
+            } else if (field === 'cause-details') {
+                const details = target.value.split(/\n+/).map((entry) => entry.trim()).filter(Boolean);
+                causeRef.details = details.length ? details : ['*'];
+            }
+            return draft;
+        }, { silent: true, skipRender: true });
+    }
+
+    function handleTaxonomyClick(event) {
+        const action = event.target?.dataset?.action;
+        if (!action) return;
+        const typeNode = event.target.closest('[data-type-index]');
+        const typeIndex = typeNode ? Number(typeNode.dataset.typeIndex) : -1;
+        const categoryNode = event.target.closest('[data-category-index]');
+        const categoryIndex = categoryNode ? Number(categoryNode.dataset.categoryIndex) : -1;
+        const causeNode = event.target.closest('[data-cause-index]');
+        const causeIndex = causeNode ? Number(causeNode.dataset.causeIndex) : -1;
+
+        saveConfig((draft) => {
+            draft.types = draft.types || [];
+
+            if (action === 'type-add') {
+                draft.types.push({ name: 'Nouveau type', categories: [] });
+                return draft;
+            }
+
+            if (typeIndex < 0 || typeIndex >= draft.types.length) {
+                return draft;
+            }
+            const typeRef = draft.types[typeIndex];
+            typeRef.categories = Array.isArray(typeRef.categories) ? typeRef.categories : [];
+
+            if (action === 'type-delete') {
+                draft.types.splice(typeIndex, 1);
+                return draft;
+            }
+            if (action === 'type-up') {
+                moveArrayItem(draft.types, typeIndex, typeIndex - 1);
+                return draft;
+            }
+            if (action === 'type-down') {
+                moveArrayItem(draft.types, typeIndex, typeIndex + 1);
+                return draft;
+            }
+            if (action === 'type-add-category') {
+                typeRef.categories.push({ name: 'Nouvelle catégorie', causes: [] });
+                return draft;
+            }
+
+            if (categoryIndex < 0 || categoryIndex >= typeRef.categories.length) {
+                return draft;
+            }
+            const categoryRef = typeRef.categories[categoryIndex];
+            categoryRef.causes = Array.isArray(categoryRef.causes) ? categoryRef.causes : [];
+
+            if (action === 'category-delete') {
+                typeRef.categories.splice(categoryIndex, 1);
+                return draft;
+            }
+            if (action === 'category-up') {
+                moveArrayItem(typeRef.categories, categoryIndex, categoryIndex - 1);
+                return draft;
+            }
+            if (action === 'category-down') {
+                moveArrayItem(typeRef.categories, categoryIndex, categoryIndex + 1);
+                return draft;
+            }
+            if (action === 'category-add-cause') {
+                categoryRef.causes.push({ name: 'Nouvelle cause', details: ['*'] });
+                return draft;
+            }
+
+            if (causeIndex < 0 || causeIndex >= categoryRef.causes.length) {
+                return draft;
+            }
+            if (action === 'cause-delete') {
+                categoryRef.causes.splice(causeIndex, 1);
+                return draft;
+            }
+            if (action === 'cause-up') {
+                moveArrayItem(categoryRef.causes, causeIndex, causeIndex - 1);
+                return draft;
+            }
+            if (action === 'cause-down') {
+                moveArrayItem(categoryRef.causes, causeIndex, causeIndex + 1);
+                return draft;
+            }
+
+            return draft;
+        });
+    }
+    function handleAssetsChange(event) {
+        const target = event.target;
+        if (!target) return;
+        const assetNode = target.closest('[data-asset-index]');
+        if (!assetNode) return;
+        const assetIndex = Number(assetNode.dataset.assetIndex);
+        if (Number.isNaN(assetIndex)) return;
+        const subsetNode = target.closest('[data-subset-index]');
+        const field = target.dataset.field;
+        if (!field) return;
+
+        saveConfig((draft) => {
+            draft.assets = draft.assets || [];
+            draft.assets[assetIndex] = draft.assets[assetIndex] || { code: '', label: '', subsets: [] };
+            const assetRef = draft.assets[assetIndex];
+            assetRef.subsets = Array.isArray(assetRef.subsets) ? assetRef.subsets : [];
+
+            if (field === 'asset-code') {
+                assetRef.code = target.value;
+                return draft;
+            }
+            if (field === 'asset-label') {
+                assetRef.label = target.value;
+                return draft;
+            }
+
+            if (!subsetNode) return draft;
+            const subsetIndex = Number(subsetNode.dataset.subsetIndex);
+            if (Number.isNaN(subsetIndex)) return draft;
+            assetRef.subsets[subsetIndex] = assetRef.subsets[subsetIndex] || { slug: '', label: '' };
+            if (field === 'subset-slug') {
+                assetRef.subsets[subsetIndex].slug = target.value;
+            } else if (field === 'subset-label') {
+                assetRef.subsets[subsetIndex].label = target.value;
+            }
+            return draft;
+        }, { silent: true, skipRender: true });
+    }
+
+    function handleAssetsClick(event) {
+        const action = event.target?.dataset?.action;
+        if (!action) return;
+        const assetNode = event.target.closest('[data-asset-index]');
+        const assetIndex = assetNode ? Number(assetNode.dataset.assetIndex) : -1;
+        const subsetNode = event.target.closest('[data-subset-index]');
+        const subsetIndex = subsetNode ? Number(subsetNode.dataset.subsetIndex) : -1;
+
+        saveConfig((draft) => {
+            draft.assets = draft.assets || [];
+
+            if (action === 'asset-add') {
+                draft.assets.push({ code: 'EQP-' + (draft.assets.length + 1), label: 'Nouvel équipement', subsets: [] });
+                return draft;
+            }
+
+            if (assetIndex < 0 || assetIndex >= draft.assets.length) {
+                return draft;
+            }
+            const assetRef = draft.assets[assetIndex];
+            assetRef.subsets = Array.isArray(assetRef.subsets) ? assetRef.subsets : [];
+
+            if (action === 'asset-delete') {
+                draft.assets.splice(assetIndex, 1);
+                return draft;
+            }
+            if (action === 'asset-up') {
+                moveArrayItem(draft.assets, assetIndex, assetIndex - 1);
+                return draft;
+            }
+            if (action === 'asset-down') {
+                moveArrayItem(draft.assets, assetIndex, assetIndex + 1);
+                return draft;
+            }
+            if (action === 'subset-add') {
+                assetRef.subsets.push({ slug: 'subset-' + (assetRef.subsets.length + 1), label: 'Sous-ensemble' });
+                return draft;
+            }
+
+            if (subsetIndex < 0 || subsetIndex >= assetRef.subsets.length) {
+                return draft;
+            }
+            if (action === 'subset-delete') {
+                assetRef.subsets.splice(subsetIndex, 1);
+                return draft;
+            }
+            if (action === 'subset-up') {
+                moveArrayItem(assetRef.subsets, subsetIndex, subsetIndex - 1);
+                return draft;
+            }
+            if (action === 'subset-down') {
+                moveArrayItem(assetRef.subsets, subsetIndex, subsetIndex + 1);
+                return draft;
+            }
+            return draft;
+        });
+    }
+    function handleExportChange(event) {
+        const target = event.target;
+        if (!target) return;
+        const field = target.dataset.field;
+        if (!field) return;
+        const columnNode = target.closest('[data-column-index]');
+        const columnIndex = columnNode ? Number(columnNode.dataset.columnIndex) : -1;
+        const prefixNode = target.closest('[data-prefix-index]');
+        const prefixIndex = prefixNode ? Number(prefixNode.dataset.prefixIndex) : -1;
+
+        saveConfig((draft) => {
+            draft.export = draft.export || deepClone(defaultConfig.export);
+            draft.prefix_map = draft.prefix_map && typeof draft.prefix_map === 'object' ? { ...draft.prefix_map } : {};
+
+            if (field === 'export-filename') {
+                draft.export.filename = target.value;
+                return draft;
+            }
+
+            if (field === 'column-name' && columnIndex >= 0) {
+                draft.export.csv_columns = Array.isArray(draft.export.csv_columns) ? draft.export.csv_columns : [];
+                draft.export.csv_columns[columnIndex] = target.value;
+                return draft;
+            }
+
+            if ((field === 'prefix-key' || field === 'prefix-value') && prefixIndex >= 0) {
+                const entries = Object.entries(draft.prefix_map || {});
+                while (entries.length <= prefixIndex) {
+                    entries.push(['', '']);
+                }
+                const pair = entries[prefixIndex] || ['', ''];
+                if (field === 'prefix-key') {
+                    pair[0] = target.value;
+                } else {
+                    pair[1] = target.value;
+                }
+                entries[prefixIndex] = pair;
+                const nextMap = {};
+                entries.forEach(([k, v], idx) => {
+                    const key = k;
+                    nextMap[key] = v;
+                });
+                draft.prefix_map = nextMap;
+                return draft;
+            }
+            return draft;
+        }, { silent: true, skipRender: true });
+    }
+
+    function handleExportClick(event) {
+        const action = event.target?.dataset?.action;
+        if (!action) return;
+        const columnNode = event.target.closest('[data-column-index]');
+        const columnIndex = columnNode ? Number(columnNode.dataset.columnIndex) : -1;
+        const prefixNode = event.target.closest('[data-prefix-index]');
+        const prefixIndex = prefixNode ? Number(prefixNode.dataset.prefixIndex) : -1;
+
+        saveConfig((draft) => {
+            draft.export = draft.export || deepClone(defaultConfig.export);
+            draft.export.csv_columns = Array.isArray(draft.export.csv_columns) ? draft.export.csv_columns : [];
+            draft.prefix_map = draft.prefix_map && typeof draft.prefix_map === 'object' ? { ...draft.prefix_map } : {};
+
+            if (action === 'column-add') {
+                draft.export.csv_columns.push('nouvelle_colonne');
+                return draft;
+            }
+            if (action === 'column-delete' && columnIndex >= 0) {
+                draft.export.csv_columns.splice(columnIndex, 1);
+                return draft;
+            }
+            if (action === 'column-up' && columnIndex > 0) {
+                moveArrayItem(draft.export.csv_columns, columnIndex, columnIndex - 1);
+                return draft;
+            }
+            if (action === 'column-down' && columnIndex >= 0 && columnIndex < draft.export.csv_columns.length - 1) {
+                moveArrayItem(draft.export.csv_columns, columnIndex, columnIndex + 1);
+                return draft;
+            }
+            if (action === 'prefix-add') {
+                const entries = Object.entries(draft.prefix_map);
+                entries.push(['Nouveau type', 'PRF']);
+                draft.prefix_map = entries.reduce((acc, [k, v]) => { acc[k] = v; return acc; }, {});
+                return draft;
+            }
+            if (action === 'prefix-delete' && prefixIndex >= 0) {
+                const entries = Object.entries(draft.prefix_map);
+                entries.splice(prefixIndex, 1);
+                draft.prefix_map = entries.reduce((acc, [k, v]) => { acc[k] = v; return acc; }, {});
+                return draft;
+            }
+            if (action === 'export-reset') {
+                draft.export = deepClone(defaultConfig.export);
+                draft.prefix_map = deepClone(defaultConfig.prefix_map || {});
+                return draft;
+            }
+            return draft;
+        }, action === 'export-reset' ? { successMessage: 'Configuration export réinitialisée' } : undefined);
+    }
+    function handleTeamsChange(event) {
+        const target = event.target;
+        if (!target) return;
+        const node = target.closest('[data-team-index]');
+        if (!node) return;
+        const index = Number(node.dataset.teamIndex);
+        if (Number.isNaN(index)) return;
+        const field = target.dataset.field;
+        if (!field) return;
+
+        saveConfig((draft) => {
+            draft.team_shifts = Array.isArray(draft.team_shifts) ? draft.team_shifts : deepClone(defaultConfig.team_shifts);
+            draft.team_shifts[index] = draft.team_shifts[index] || { id: '', label: '', start: null, end: null, fullDay: false };
+            const ref = draft.team_shifts[index];
+
+            if (field === 'team-id') {
+                ref.id = target.value;
+            } else if (field === 'team-label') {
+                ref.label = target.value;
+            } else if (field === 'team-start') {
+                ref.start = target.value === '' ? null : Number(target.value);
+            } else if (field === 'team-end') {
+                ref.end = target.value === '' ? null : Number(target.value);
+            } else if (field === 'team-fullday') {
+                ref.fullDay = target.checked;
+                if (ref.fullDay) {
+                    ref.start = null;
+                    ref.end = null;
+                }
+            }
+            return draft;
+        }, { silent: true });
+    }
+
+    function handleTeamsClick(event) {
+        const action = event.target?.dataset?.action;
+        if (!action) return;
+        const node = event.target.closest('[data-team-index]');
+        const index = node ? Number(node.dataset.teamIndex) : -1;
+
+        saveConfig((draft) => {
+            draft.team_shifts = Array.isArray(draft.team_shifts) ? draft.team_shifts : deepClone(defaultConfig.team_shifts);
+
+            if (action === 'team-add') {
+                draft.team_shifts.push({ id: 'shift-' + (draft.team_shifts.length + 1), label: 'Nouveau créneau', start: 6, end: 14, fullDay: false });
+                return draft;
+            }
+
+            if (index < 0 || index >= draft.team_shifts.length) {
+                return draft;
+            }
+
+            if (action === 'team-delete') {
+                draft.team_shifts.splice(index, 1);
+                return draft;
+            }
+            if (action === 'team-up') {
+                moveArrayItem(draft.team_shifts, index, index - 1);
+                return draft;
+            }
+            if (action === 'team-down') {
+                moveArrayItem(draft.team_shifts, index, index + 1);
+                return draft;
+            }
+            return draft;
+        }, action === 'team-add' ? { successMessage: 'Équipe ajoutée' } : undefined);
+    }
+    function handleConfigIOClick(event) {
+        const action = event.target?.dataset?.action;
+        if (!action) return;
+        if (action === 'config-download') {
+            const payload = deepClone(activeConfig || defaultConfig);
+            downloadFile(JSON.stringify(payload, null, 2), 'prodtrack_config.json', 'application/json');
+            return;
+        }
+        if (action === 'config-import' && configFileInput) {
+            configFileInput.value = '';
+            configFileInput.click();
+            return;
+        }
+        if (action === 'config-reset') {
+            saveConfig(() => deepClone(defaultConfig), { successMessage: 'Configuration réinitialisée' });
+            return;
+        }
+        if (action === 'config-save') {
+            saveConfig((draft) => draft, { successMessage: 'Paramètres sauvegardés' });
+            return;
+        }
+        if (action === 'config-refresh') {
+            renderParamsPage();
+            broadcastConfigUpdated();
+            showToast('Interface rechargée', 'success');
+        }
+    }
+
+    function initParamsPage() {
+        if (!paramsPageState.root) return;
+        paramsPageState.active = true;
+        ensureParamsContainers();
+        renderParamsPage();
+        if (paramsPageState.initialized) return;
+
+        const containers = paramsPageState.containers;
+        if (containers.metrics) {
+            registerParamsListener(containers.metrics, 'change', handleMetricsChange);
+            registerParamsListener(containers.metrics, 'click', handleMetricsClick);
+        }
+        if (containers.rules) {
+            registerParamsListener(containers.rules, 'change', handleRulesChange);
+            registerParamsListener(containers.rules, 'click', handleRulesClick);
+        }
+        if (containers.taxonomy) {
+            registerParamsListener(containers.taxonomy, 'input', handleTaxonomyInput);
+            registerParamsListener(containers.taxonomy, 'change', handleTaxonomyInput);
+            registerParamsListener(containers.taxonomy, 'click', handleTaxonomyClick);
+        }
+        if (containers.assets) {
+            registerParamsListener(containers.assets, 'change', handleAssetsChange);
+            registerParamsListener(containers.assets, 'input', handleAssetsChange);
+            registerParamsListener(containers.assets, 'click', handleAssetsClick);
+        }
+        if (containers.export) {
+            registerParamsListener(containers.export, 'change', handleExportChange);
+            registerParamsListener(containers.export, 'input', handleExportChange);
+            registerParamsListener(containers.export, 'click', handleExportClick);
+        }
+        if (containers.teams) {
+            registerParamsListener(containers.teams, 'change', handleTeamsChange);
+            registerParamsListener(containers.teams, 'input', handleTeamsChange);
+            registerParamsListener(containers.teams, 'click', handleTeamsClick);
+        }
+        if (containers.config) {
+            registerParamsListener(containers.config, 'click', handleConfigIOClick);
+        }
+
+        paramsPageState.initialized = true;
+    }
+
+    function teardownParamsPage() {
+        paramsPageState.active = false;
+        clearParamsListeners();
     }
 
     function populateTypeSelect() {
@@ -2898,31 +4358,69 @@
     function handleConfigUpload(event) {
         const file = event.target.files?.[0];
         if (!file) return;
-        if (file.name !== 'config_evenements.json') {
-            showToast('Nom de fichier inattendu.');
-            return;
-        }
         const reader = new FileReader();
         reader.onload = (e) => {
             try {
                 const parsed = JSON.parse(e.target.result);
-                if (!parsed.types || !parsed.rules || !parsed.assets) {
-                    throw new Error('Structure incomplète.');
+                const success = saveConfig(() => parsed, { successMessage: 'Import réussi' });
+                if (!success) {
+                    showToast('Import invalide.', 'error');
                 }
-                activeConfig = withConfigDefaults(parsed);
-                persistConfig();
-                populateTypeSelect();
-                buildDynamicFields();
-                updateActiveProfileMeta();
-                showToast('Configuration chargée.');
             } catch (err) {
                 console.warn(err);
-                showToast('Configuration invalide.');
+                showToast('JSON invalide.', 'error');
             }
         };
         reader.readAsText(file);
         event.target.value = '';
     }
+
+    window.addEventListener('page:params:open', initParamsPage);
+    window.addEventListener('page:params:close', teardownParamsPage);
+
+    window.addEventListener('config:updated', (evt) => {
+        const previous = {
+            type: typeSelect.value,
+            category: categorySelect.value,
+            cause: causeSelect.value,
+            detail: detailSelect.value,
+            team: selectedTeamId
+        };
+
+        populateTypeSelect();
+        if (previous.type && Array.from(typeSelect.options).some((opt) => opt.value === previous.type)) {
+            typeSelect.value = previous.type;
+        }
+        updateCategoryOptions();
+        if (previous.category && Array.from(categorySelect.options).some((opt) => opt.value === previous.category)) {
+            categorySelect.value = previous.category;
+        }
+        updateCauseOptions();
+        if (previous.cause && Array.from(causeSelect.options).some((opt) => opt.value === previous.cause)) {
+            causeSelect.value = previous.cause;
+        }
+        updateDetailOptions();
+        if (previous.detail && Array.from(detailSelect.options).some((opt) => opt.value === previous.detail)) {
+            detailSelect.value = previous.detail;
+        }
+        buildDynamicFields();
+        manageSubsetVisibility();
+
+        populateTeamSelect();
+        const availableShifts = getConfiguredTeamShifts();
+        if (previous.team && availableShifts.some((shift) => shift.id === previous.team)) {
+            selectedTeamId = previous.team;
+            if (teamSelect) {
+                teamSelect.value = previous.team;
+            }
+        }
+        generateTimeSlots();
+        refreshSummary();
+        const meta = evt?.detail?.meta || {};
+        if (!meta.skipRender) {
+            renderParamsPageIfActive();
+        }
+    });
 
     function initialize() {
         loadSidebarState();
@@ -3008,6 +4506,7 @@
     });
 
     var historyStack = ['saisie'];
+    var currentRoute = 'saisie';
 
     function setActive(link){
       var activeClass = 'active';
@@ -3029,6 +4528,10 @@
       var target = routes[to] || mainView;
       if(!target) return;
 
+      if(currentRoute === 'params' && to !== 'params'){
+        window.dispatchEvent(new CustomEvent('page:params:close'));
+      }
+
       for(var i=0;i<knownViews.length;i++){
         var view = knownViews[i];
         if(view !== target){
@@ -3036,6 +4539,12 @@
         }
       }
       show(target);
+
+      if(to === 'params' && currentRoute !== 'params'){
+        window.dispatchEvent(new CustomEvent('page:params:open'));
+      }
+
+      currentRoute = to;
 
       if(!options || !options.replace){
         var lastRoute = historyStack[historyStack.length-1];
