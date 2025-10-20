@@ -1250,6 +1250,32 @@
     </section>
 
     <section id="page-params" role="region" aria-label="Paramétrage" style="display:none; padding:16px;">
+      <section id="cfg-profiles" class="card" style="padding:16px;border-radius:16px;max-width:980px;margin-bottom:16px;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <h3 style="margin:0;">Profils OEE & Cadence</h3>
+          <button id="pf-add" type="button" style="margin-left:auto;">+ Profil</button>
+        </div>
+        <div style="opacity:.7;margin:6px 0 12px;">Définissez les cibles par profil.</div>
+        <div id="pf-list" style="display:flex;flex-direction:column;gap:14px;"></div>
+      </section>
+      <template id="pf-item-tpl">
+        <div class="pf-item" style="border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:12px;">
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input class="pf-name" type="text" placeholder="Nom du profil" style="flex:1;">
+            <div style="display:flex;gap:6px;">
+              <button class="pf-up" type="button" title="Monter">↑</button>
+              <button class="pf-down" type="button" title="Descendre">↓</button>
+            </div>
+            <button class="pf-del" type="button" style="background:#fecaca;color:#7f1d1d;">Supprimer</button>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:10px;">
+            <div><label>CADENCE CIBLE (U/H)</label><input class="pf-cad" type="number" step="1" min="0" placeholder="16000"></div>
+            <div><label>QUALITÉ CIBLE (%)</label><input class="pf-qual" type="number" step="0.1" min="0" max="100" placeholder="98"></div>
+            <div><label>DISPONIBILITÉ CIBLE (%)</label><input class="pf-disp" type="number" step="0.1" min="0" max="100" placeholder="92"></div>
+            <div><label>OEE CIBLE (%)</label><input class="pf-oee" type="number" step="0.1" min="0" max="100" placeholder="85"></div>
+          </div>
+        </div>
+      </template>
       <div id="cfg-ligne-save" class="card" style="padding:16px;border-radius:16px;max-width:720px;margin-bottom:12px;">
         <div style="font-weight:600;">Ligne & sauvegarde</div>
         <div style="opacity:.7;margin-bottom:12px;">Définissez la ligne active et la destination des exports.</div>
@@ -3181,6 +3207,240 @@
 
   }catch(err){
     console.warn('Nav SPA init skipped:', err);
+  }
+})();
+</script>
+<script>
+(function(){
+  try{
+    var $ = function(sel, ctx){ return (ctx || document).querySelector(sel); };
+    var qa = function(sel, ctx){ return Array.from((ctx || document).querySelectorAll(sel)); };
+    var box = document.getElementById('cfg-profiles');
+    if(!box) return;
+    var list = document.getElementById('pf-list');
+    var addBtn = document.getElementById('pf-add');
+    var tpl = document.getElementById('pf-item-tpl');
+    if(!list || !tpl) return;
+
+    var STORAGE_KEY = 'prodtrack_profiles';
+
+    function ensureId(base, used){
+      var raw = (base == null ? '' : String(base)).toLowerCase();
+      raw = raw.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+      if(!raw) raw = 'profil';
+      var candidate = raw;
+      var index = 2;
+      while(used.has(candidate)){
+        candidate = raw + '-' + index;
+        index += 1;
+      }
+      used.add(candidate);
+      return candidate;
+    }
+
+    function clampRange(value, min, max){
+      if(value == null || value === '') return null;
+      var num = parseFloat(String(value).replace(',', '.'));
+      if(!isFinite(num)) return null;
+      if(typeof min === 'number' && num < min) num = min;
+      if(typeof max === 'number' && num > max) num = max;
+      return num;
+    }
+
+    function sanitizeProfiles(items){
+      var used = new Set();
+      return (items || []).map(function(p){
+        p = p || {};
+        var name = typeof p.name === 'string' ? p.name.trim() : '';
+        var idSource = p.id != null ? p.id : name;
+        var id = ensureId(idSource, used);
+        return {
+          id: id,
+          name: name,
+          cadence: clampRange(p.cadence, 0, null),
+          qual: clampRange(p.qual, 0, 100),
+          disp: clampRange(p.disp, 0, 100),
+          oee: clampRange(p.oee, 0, 100)
+        };
+      });
+    }
+
+    function loadProfiles(){
+      try{
+        var raw = localStorage.getItem(STORAGE_KEY);
+        if(!raw) return [];
+        var parsed = JSON.parse(raw);
+        if(Array.isArray(parsed)){
+          return sanitizeProfiles(parsed);
+        }
+      }catch(err){
+        console.warn('cfg-profiles load failed:', err);
+      }
+      return [];
+    }
+
+    function saveProfiles(arr){
+      try{
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(arr));
+      }catch(err){
+        console.warn('cfg-profiles save failed:', err);
+      }
+    }
+
+    function renderProfiles(arr){
+      list.innerHTML = '';
+      (arr || []).forEach(function(profile){
+        var fragment = document.importNode(tpl.content, true);
+        var card = fragment.querySelector('.pf-item');
+        if(!card) return;
+        card.dataset.id = profile.id || '';
+        var nameInput = card.querySelector('.pf-name');
+        if(nameInput) nameInput.value = profile.name || '';
+        var cadInput = card.querySelector('.pf-cad');
+        if(cadInput) cadInput.value = profile.cadence != null ? profile.cadence : '';
+        var qualInput = card.querySelector('.pf-qual');
+        if(qualInput) qualInput.value = profile.qual != null ? profile.qual : '';
+        var dispInput = card.querySelector('.pf-disp');
+        if(dispInput) dispInput.value = profile.disp != null ? profile.disp : '';
+        var oeeInput = card.querySelector('.pf-oee');
+        if(oeeInput) oeeInput.value = profile.oee != null ? profile.oee : '';
+        list.appendChild(fragment);
+      });
+    }
+
+    function collectProfilesFromUI(){
+      var cards = qa('.pf-item', list);
+      var raw = cards.map(function(card){
+        var val = function(sel){
+          var el = card.querySelector(sel);
+          return el ? el.value : '';
+        };
+        return {
+          id: card.dataset.id,
+          name: (val('.pf-name') || '').trim(),
+          cadence: val('.pf-cad'),
+          qual: val('.pf-qual'),
+          disp: val('.pf-disp'),
+          oee: val('.pf-oee')
+        };
+      });
+      var sanitized = sanitizeProfiles(raw);
+      sanitized.forEach(function(profile, index){
+        var card = cards[index];
+        if(card){
+          card.dataset.id = profile.id;
+        }
+      });
+      return sanitized;
+    }
+
+    function pushToProfilActifSelect(arr){
+      var sel = document.getElementById('profil-actif');
+      if(!sel) return;
+      var previous = sel.value;
+      var placeholder = sel.querySelector('option[value=""]');
+      var placeholderText = placeholder ? placeholder.textContent : 'Sélectionner un profil';
+      sel.innerHTML = '';
+      if(!placeholder){
+        placeholder = document.createElement('option');
+        placeholder.value = '';
+      }
+      placeholder.textContent = placeholderText;
+      sel.appendChild(placeholder);
+      (arr || []).forEach(function(profile){
+        if(!profile || !profile.name) return;
+        var opt = document.createElement('option');
+        opt.value = profile.id || profile.name;
+        opt.textContent = profile.name;
+        opt.dataset.profileOption = '1';
+        sel.appendChild(opt);
+      });
+      if(previous && sel.querySelector('option[value="'+previous+'"])')){
+        sel.value = previous;
+      }
+    }
+
+    function persistAndPropagate(){
+      var data = collectProfilesFromUI();
+      saveProfiles(data);
+      pushToProfilActifSelect(data);
+    }
+
+    var initial = loadProfiles();
+    if(!initial.length){
+      initial = sanitizeProfiles([
+        { id: 'jour-standard', name: 'Jour – Standard', cadence: 16000, qual: 98, disp: 92, oee: 85 },
+        { id: 'soir-haute', name: 'Soir – Haute cadence', cadence: 16500, qual: 97.5, disp: 90, oee: 83 },
+        { id: 'nuit-maint', name: 'Nuit – Maintenance', cadence: 15000, qual: 98.5, disp: 94, oee: 80 }
+      ]);
+    }
+
+    renderProfiles(initial);
+    saveProfiles(initial);
+    pushToProfilActifSelect(initial);
+
+    list.addEventListener('input', function(evt){
+      if(evt && evt.target && evt.target.matches('input')){
+        persistAndPropagate();
+      }
+    });
+
+    list.addEventListener('change', function(evt){
+      if(evt && evt.target && evt.target.matches('input')){
+        persistAndPropagate();
+      }
+    });
+
+    list.addEventListener('click', function(evt){
+      var target = evt.target;
+      if(!target) return;
+      if(target.classList.contains('pf-del')){
+        var cardDel = target.closest('.pf-item');
+        if(cardDel){
+          cardDel.remove();
+          persistAndPropagate();
+        }
+      } else if(target.classList.contains('pf-up')){
+        var cardUp = target.closest('.pf-item');
+        if(cardUp){
+          var prev = cardUp.previousElementSibling;
+          if(prev){
+            list.insertBefore(cardUp, prev);
+            persistAndPropagate();
+          }
+        }
+      } else if(target.classList.contains('pf-down')){
+        var cardDown = target.closest('.pf-item');
+        if(cardDown){
+          var next = cardDown.nextElementSibling;
+          if(next){
+            list.insertBefore(cardDown, next.nextElementSibling);
+            persistAndPropagate();
+          }
+        }
+      }
+    });
+
+    if(addBtn){
+      addBtn.addEventListener('click', function(){
+        var fragment = document.importNode(tpl.content, true);
+        var card = fragment.querySelector('.pf-item');
+        if(card){
+          var used = new Set(qa('.pf-item', list).map(function(el){ return (el.dataset.id || '').trim(); }));
+          card.dataset.id = ensureId('profil', used);
+        }
+        list.appendChild(fragment);
+        persistAndPropagate();
+        var newest = list.lastElementChild;
+        if(newest){
+          var focusInput = newest.querySelector('.pf-name');
+          if(focusInput && typeof focusInput.focus === 'function'){ focusInput.focus(); }
+        }
+      });
+    }
+
+  }catch(err){
+    console.warn('cfg-profiles init skipped:', err);
   }
 })();
 </script>
