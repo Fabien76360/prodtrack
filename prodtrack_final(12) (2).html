@@ -1250,6 +1250,25 @@
     </section>
 
     <section id="page-params" role="region" aria-label="Paramétrage" style="display:none; padding:16px;">
+      <div id="cfg-ligne-save" class="card" style="padding:16px;border-radius:16px;max-width:720px;margin-bottom:12px;">
+        <div style="font-weight:600;">Ligne & sauvegarde</div>
+        <div style="opacity:.7;margin-bottom:12px;">Définissez la ligne active et la destination des exports.</div>
+
+        <label for="cfg-line" style="display:block;margin-top:8px;">Ligne</label>
+        <input id="cfg-line" type="text" placeholder="Ex. L27" style="width:100%;">
+
+        <label for="cfg-path-report" style="display:block;margin-top:12px;">Chemin / lien du <b>rapport</b></label>
+        <input id="cfg-path-report" type="text" placeholder="Dossier ou URL de dépôt du rapport" style="width:100%;">
+
+        <label for="cfg-path-live" style="display:block;margin-top:12px;">Chemin / lien du <b>fichier en cours</b></label>
+        <input id="cfg-path-live" type="text" placeholder="Dossier ou URL du fichier en cours" style="width:100%;">
+
+        <div style="display:flex;gap:8px;margin-top:12px;">
+          <button id="cfg-save" type="button">Enregistrer</button>
+          <button id="cfg-reset" type="button">Réinitialiser</button>
+          <span id="cfg-msg" style="opacity:.7;margin-left:auto;"></span>
+        </div>
+      </div>
       <h2>Paramétrage</h2>
       <p style="opacity:.7;">Page en construction.</p>
       <button id="btn-back-from-params" type="button">Retour</button>
@@ -3162,6 +3181,88 @@
 
   }catch(err){
     console.warn('Nav SPA init skipped:', err);
+  }
+})();
+</script>
+<script>
+(function(){
+  try{
+    var byId = function(id){ return document.getElementById(id); };
+    var box = byId('cfg-ligne-save');
+    if(!box) return;
+
+    var line = byId('cfg-line');
+    var pathR = byId('cfg-path-report');
+    var pathL = byId('cfg-path-live');
+    var saveBtn = byId('cfg-save');
+    var resetBtn = byId('cfg-reset');
+    var msg = byId('cfg-msg');
+
+    var KEY = 'prodtrack_cfg';
+
+    function looksLikePath(val){
+      if(!val) return false;
+      var s = String(val).trim();
+      return /^https?:\/\//i.test(s) || /[\\\/]/.test(s);
+    }
+
+    function setMessage(text){
+      if(msg) msg.textContent = text || '';
+    }
+
+    function load(){
+      try{
+        var raw = localStorage.getItem(KEY);
+        if(!raw) return;
+        var data = JSON.parse(raw);
+        if(line && data.line) line.value = data.line;
+        if(pathR && data.path_report) pathR.value = data.path_report;
+        if(pathL && data.path_live) pathL.value = data.path_live;
+        setMessage('');
+      }catch(e){
+        setMessage('Erreur chargement');
+      }
+    }
+
+    function saveCfg(){
+      var data = {
+        line: line && line.value ? line.value.trim() : '',
+        path_report: pathR && pathR.value ? pathR.value.trim() : '',
+        path_live: pathL && pathL.value ? pathL.value.trim() : ''
+      };
+
+      var errs = [];
+      if(!data.line) errs.push('ligne');
+      if(data.path_report && !looksLikePath(data.path_report)) errs.push('lien rapport');
+      if(data.path_live && !looksLikePath(data.path_live)) errs.push('lien fichier en cours');
+
+      if(errs.length){
+        setMessage('Vérifier: ' + errs.join(', '));
+        return;
+      }
+
+      try{
+        localStorage.setItem(KEY, JSON.stringify(data));
+        setMessage('Enregistré');
+      }catch(e){
+        setMessage('Erreur stockage');
+      }
+    }
+
+    function resetCfg(){
+      try{ localStorage.removeItem(KEY); }catch(e){}
+      if(line) line.value = '';
+      if(pathR) pathR.value = '';
+      if(pathL) pathL.value = '';
+      setMessage('Réinitialisé');
+    }
+
+    load();
+
+    if(saveBtn) saveBtn.addEventListener('click', saveCfg);
+    if(resetBtn) resetBtn.addEventListener('click', resetCfg);
+  }catch(err){
+    console.warn('cfg-ligne-save init skipped:', err);
   }
 })();
 </script>
