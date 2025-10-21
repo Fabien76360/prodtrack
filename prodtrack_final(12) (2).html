@@ -1331,6 +1331,18 @@
           <span id="cfg-msg" style="opacity:.7;margin-left:auto;"></span>
         </div>
       </div>
+      <section id="cfg-events-csv" class="card" style="padding:16px;border-radius:16px;max-width:980px;margin:16px 0;">
+        <h3 style="margin:0;">Configuration événements (CSV)</h3>
+        <p style="opacity:.75;margin:6px 0 12px;">Importez ou exportez les événements utilisés pour la saisie (Type → Catégorie → Cause 5M → Détail).</p>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <input id="evcsv-file" type="file" accept=".csv,text/csv">
+          <button id="evcsv-import" type="button">Importer</button>
+          <button id="evcsv-template" type="button">Télécharger modèle</button>
+          <button id="evcsv-export" type="button">Exporter actuel</button>
+          <span id="evcsv-msg" style="margin-left:auto;opacity:.75;"></span>
+        </div>
+        <small style="opacity:.7;">Colonnes supportées : type, categorie, cause5m, detail, equipement, article, zone</small>
+      </section>
       <h2>Paramétrage</h2>
       <p style="opacity:.7;">Page en construction.</p>
       <button id="btn-back-from-params" type="button">Retour</button>
@@ -1585,6 +1597,7 @@
     let additionHistory = [];
     let hourQuantities = {};
     let lineClosures = [];
+    let eventConfigModel = loadEventConfigModel();
 
     const RULE_FIELD_KEYS = Object.keys(FIELD_DEFS);
 
@@ -1613,6 +1626,69 @@
         const item = array.splice(fromIndex, 1)[0];
         array.splice(toIndex, 0, item);
         return array;
+    }
+
+    function uniqueList(values) {
+        const seen = new Set();
+        const result = [];
+        (values || []).forEach((value) => {
+            if (value === null || value === undefined) return;
+            const str = String(value).trim();
+            if (!str || seen.has(str)) return;
+            seen.add(str);
+            result.push(str);
+        });
+        return result;
+    }
+
+    function normalizeEventConfigModel(model) {
+        if (!model || typeof model !== 'object') {
+            return null;
+        }
+        const tree = {};
+        if (model.tree && typeof model.tree === 'object') {
+            Object.keys(model.tree).forEach((typeName) => {
+                if (!typeName) return;
+                const typeNode = model.tree[typeName];
+                const categoryBucket = {};
+                if (typeNode && typeof typeNode === 'object' && typeNode.categories && typeof typeNode.categories === 'object') {
+                    Object.keys(typeNode.categories).forEach((categoryName) => {
+                        if (!categoryName) return;
+                        const categoryNode = typeNode.categories[categoryName];
+                        const causeBucket = {};
+                        if (categoryNode && typeof categoryNode === 'object' && categoryNode.causes && typeof categoryNode.causes === 'object') {
+                            Object.keys(categoryNode.causes).forEach((causeName) => {
+                                if (!causeName) return;
+                                const causeNode = categoryNode.causes[causeName];
+                                const details = uniqueList(Array.isArray(causeNode?.details) ? causeNode.details : []);
+                                causeBucket[causeName] = { details };
+                            });
+                        }
+                        categoryBucket[categoryName] = { causes: causeBucket };
+                    });
+                }
+                tree[typeName] = { categories: categoryBucket };
+            });
+        }
+        const equips = uniqueList(Array.isArray(model.equips) ? model.equips : []);
+        const articles = uniqueList(Array.isArray(model.articles) ? model.articles : []);
+        const zones = uniqueList(Array.isArray(model.zones) ? model.zones : []);
+        if (!Object.keys(tree).length && !equips.length && !articles.length && !zones.length) {
+            return null;
+        }
+        return { tree, equips, articles, zones };
+    }
+
+    function loadEventConfigModel() {
+        try {
+            const raw = localStorage.getItem('prodtrack_event_config_v1');
+            if (!raw) return null;
+            const parsed = JSON.parse(raw);
+            return normalizeEventConfigModel(parsed);
+        } catch (err) {
+            console.warn('Event config load failed:', err);
+            return null;
+        }
     }
 
     const today = new Date();
@@ -2258,28 +2334,84 @@
         }
     }
 
+    function getAvailableTypes() {
+        if (eventConfigModel && eventConfigModel.tree && Object.keys(eventConfigModel.tree).length) {
+            return uniqueList(Object.keys(eventConfigModel.tree));
+        }
+        if (activeConfig && Array.isArray(activeConfig.types)) {
+            return uniqueList(activeConfig.types.map(t => t?.name));
+        }
+        return [];
+    }
+
+    function getCategoriesForType(typeName) {
+        if (!typeName) return [];
+        if (eventConfigModel && eventConfigModel.tree && eventConfigModel.tree[typeName]?.categories) {
+            return uniqueList(Object.keys(eventConfigModel.tree[typeName].categories));
+        }
+        const typeObj = activeConfig?.types?.find(t => t.name === typeName);
+        if (!typeObj || !Array.isArray(typeObj.categories)) return [];
+        return uniqueList(typeObj.categories.map(cat => cat?.name));
+    }
+
+    function getCausesForCategory(typeName, categoryName) {
+        if (!typeName || !categoryName) return [];
+        if (eventConfigModel && eventConfigModel.tree) {
+            const causeBucket = eventConfigModel.tree[typeName]?.categories?.[categoryName]?.causes;
+            if (causeBucket && typeof causeBucket === 'object') {
+                return uniqueList(Object.keys(causeBucket));
+            }
+        }
+        const typeObj = activeConfig?.types?.find(t => t.name === typeName);
+        const catObj = typeObj?.categories?.find(c => c.name === categoryName);
+        if (!catObj || !Array.isArray(catObj.causes)) return [];
+        return uniqueList(catObj.causes.map(cs => cs?.name));
+    }
+
+    function getDetailsForCause(typeName, categoryName, causeName) {
+        if (!typeName || !categoryName || !causeName) return [];
+        if (eventConfigModel && eventConfigModel.tree) {
+            const details = eventConfigModel.tree[typeName]?.categories?.[categoryName]?.causes?.[causeName]?.details;
+            if (Array.isArray(details) && details.length) {
+                return uniqueList(details);
+            }
+        }
+        const typeObj = activeConfig?.types?.find(t => t.name === typeName);
+        const catObj = typeObj?.categories?.find(c => c.name === categoryName);
+        const causeObj = catObj?.causes?.find(c => c.name === causeName);
+        if (!causeObj || !Array.isArray(causeObj.details)) return [];
+        return uniqueList(causeObj.details);
+    }
+
     function populateTypeSelect() {
+        const previous = typeSelect.value;
+        const types = getAvailableTypes();
         typeSelect.innerHTML = '<option value="">Choisir…</option>';
-        activeConfig.types.forEach(t => {
+        types.forEach(name => {
             const option = document.createElement('option');
-            option.value = t.name;
-            option.textContent = t.name;
+            option.value = name;
+            option.textContent = name;
             typeSelect.appendChild(option);
         });
+        if (previous && types.includes(previous)) {
+            typeSelect.value = previous;
+        }
         updateCategoryOptions();
     }
 
     function updateCategoryOptions() {
         const selectedType = typeSelect.value;
+        const previous = categorySelect.value;
+        const categories = getCategoriesForType(selectedType);
         categorySelect.innerHTML = '<option value="">Choisir…</option>';
-        const typeObj = activeConfig.types.find(t => t.name === selectedType);
-        if (typeObj) {
-            typeObj.categories.forEach(cat => {
-                const opt = document.createElement('option');
-                opt.value = cat.name;
-                opt.textContent = cat.name;
-                categorySelect.appendChild(opt);
-            });
+        categories.forEach(catName => {
+            const opt = document.createElement('option');
+            opt.value = catName;
+            opt.textContent = catName;
+            categorySelect.appendChild(opt);
+        });
+        if (previous && categories.includes(previous)) {
+            categorySelect.value = previous;
         }
         updateCauseOptions();
     }
@@ -2287,16 +2419,17 @@
     function updateCauseOptions() {
         const selectedType = typeSelect.value;
         const selectedCategory = categorySelect.value;
+        const previous = causeSelect.value;
+        const causes = getCausesForCategory(selectedType, selectedCategory);
         causeSelect.innerHTML = '<option value="">Choisir…</option>';
-        const typeObj = activeConfig.types.find(t => t.name === selectedType);
-        const catObj = typeObj?.categories.find(c => c.name === selectedCategory);
-        if (catObj) {
-            catObj.causes.forEach(cs => {
-                const opt = document.createElement('option');
-                opt.value = cs.name;
-                opt.textContent = cs.name;
-                causeSelect.appendChild(opt);
-            });
+        causes.forEach(causeName => {
+            const opt = document.createElement('option');
+            opt.value = causeName;
+            opt.textContent = causeName;
+            causeSelect.appendChild(opt);
+        });
+        if (previous && causes.includes(previous)) {
+            causeSelect.value = previous;
         }
         updateDetailOptions();
     }
@@ -2305,17 +2438,19 @@
         const selectedType = typeSelect.value;
         const selectedCategory = categorySelect.value;
         const selectedCause = causeSelect.value;
+        const previous = detailSelect.value;
+        const details = getDetailsForCause(selectedType, selectedCategory, selectedCause);
+        const effectiveDetails = details.length ? details : ['*'];
         detailSelect.innerHTML = '';
-        const typeObj = activeConfig.types.find(t => t.name === selectedType);
-        const catObj = typeObj?.categories.find(c => c.name === selectedCategory);
-        const causeObj = catObj?.causes.find(c => c.name === selectedCause);
-        const details = causeObj?.details?.length ? causeObj.details : ['*'];
-        details.forEach(detail => {
+        effectiveDetails.forEach(detail => {
             const opt = document.createElement('option');
             opt.value = detail;
             opt.textContent = detail;
             detailSelect.appendChild(opt);
         });
+        if (previous && effectiveDetails.includes(previous)) {
+            detailSelect.value = previous;
+        }
     }
 
     function getRuleForSelection() {
@@ -2370,20 +2505,117 @@
             if (fieldName === 'sous_ensemble') {
                 populateSubsetOptions(inputEl, document.getElementById('equipement')?.value);
             }
+            if (fieldName === 'article') {
+                attachSuggestionList(inputEl, getEventArticles(), 'article');
+            }
+            if (fieldName === 'zone') {
+                attachSuggestionList(inputEl, getEventZones(), 'zone');
+            }
             labelSpan.appendChild(inputEl);
             dynamicFieldsContainer.appendChild(wrapper);
         });
         manageSubsetVisibility();
     }
 
-    function populateEquipmentOptions(selectEl) {
-        selectEl.innerHTML = '<option value="">Choisir…</option>';
-        activeConfig.assets.forEach(asset => {
+    function getEventEquipments() {
+        return uniqueList(eventConfigModel && Array.isArray(eventConfigModel.equips) ? eventConfigModel.equips : []);
+    }
+
+    function getEventArticles() {
+        return uniqueList(eventConfigModel && Array.isArray(eventConfigModel.articles) ? eventConfigModel.articles : []);
+    }
+
+    function getEventZones() {
+        return uniqueList(eventConfigModel && Array.isArray(eventConfigModel.zones) ? eventConfigModel.zones : []);
+    }
+
+    function attachSuggestionList(inputEl, values, fallbackId) {
+        if (!inputEl) return;
+        const listId = inputEl.id ? `${inputEl.id}-options` : `options-${fallbackId || 'list'}`;
+        let target = document.getElementById(listId);
+        if (!values || !values.length) {
+            if (target && target.parentNode) {
+                target.parentNode.removeChild(target);
+            }
+            if (inputEl.getAttribute('list') === listId) {
+                inputEl.removeAttribute('list');
+            }
+            return;
+        }
+        if (!target) {
+            target = document.createElement('datalist');
+            target.id = listId;
+            if (inputEl.parentNode) {
+                inputEl.parentNode.appendChild(target);
+            } else {
+                document.body.appendChild(target);
+            }
+        }
+        target.innerHTML = '';
+        values.forEach(value => {
             const opt = document.createElement('option');
-            opt.value = asset.code;
-            opt.textContent = `${asset.label} (${asset.code})`;
+            opt.value = value;
+            target.appendChild(opt);
+        });
+        inputEl.setAttribute('list', listId);
+    }
+
+    function refreshEventFieldSuggestions() {
+        const equipmentField = document.getElementById('equipement');
+        if (equipmentField) {
+            populateEquipmentOptions(equipmentField);
+        }
+        const articleField = document.getElementById('article');
+        if (articleField) {
+            attachSuggestionList(articleField, getEventArticles(), 'article');
+        }
+        const zoneField = document.getElementById('zone');
+        if (zoneField) {
+            attachSuggestionList(zoneField, getEventZones(), 'zone');
+        }
+    }
+
+    window.addEventListener('prodtrack:events-config', (event) => {
+        const normalized = normalizeEventConfigModel(event?.detail?.model);
+        eventConfigModel = normalized;
+        populateTypeSelect();
+        refreshEventFieldSuggestions();
+        manageSubsetVisibility();
+    });
+
+    function populateEquipmentOptions(selectEl) {
+        if (!selectEl) return;
+        const previous = selectEl.value;
+        const used = new Set();
+        selectEl.innerHTML = '<option value="">Choisir…</option>';
+        getEventEquipments().forEach(code => {
+            if (used.has(code)) return;
+            used.add(code);
+            const opt = document.createElement('option');
+            opt.value = code;
+            opt.textContent = code;
             selectEl.appendChild(opt);
         });
+        activeConfig.assets.forEach(asset => {
+            if (!asset || !asset.code) return;
+            const code = asset.code;
+            const label = asset.label ? `${asset.label} (${asset.code})` : asset.code;
+            if (used.has(code)) {
+                const existing = Array.from(selectEl.options).find(option => option.value === code);
+                if (existing) {
+                    existing.textContent = label;
+                }
+                return;
+            }
+            used.add(code);
+            const opt = document.createElement('option');
+            opt.value = code;
+            opt.textContent = label;
+            selectEl.appendChild(opt);
+        });
+        if (previous && Array.from(selectEl.options).some(option => option.value === previous)) {
+            selectEl.value = previous;
+        }
     }
 
     function populateSubsetOptions(selectEl, equipmentCode) {
@@ -2809,6 +3041,7 @@
         updateDetailOptions();
         detailSelect.value = event.detail;
         buildDynamicFields();
+        refreshEventFieldSuggestions();
         durationInput.value = event.duree_min;
         form.commentaire.value = event.commentaire || '';
         Object.keys(FIELD_DEFS).forEach(field => {
@@ -2843,16 +3076,19 @@
         typeSelect.addEventListener('change', () => {
             updateCategoryOptions();
             buildDynamicFields();
+            refreshEventFieldSuggestions();
             updateSaveStatus(false);
         });
         categorySelect.addEventListener('change', () => {
             updateCauseOptions();
             buildDynamicFields();
+            refreshEventFieldSuggestions();
             updateSaveStatus(false);
         });
         causeSelect.addEventListener('change', () => {
             updateDetailOptions();
             buildDynamicFields();
+            refreshEventFieldSuggestions();
             updateSaveStatus(false);
         });
         form.addEventListener('input', () => updateSaveStatus(false));
@@ -2939,6 +3175,7 @@
                 form.reset();
                 durationInput.value = '';
                 buildDynamicFields();
+                refreshEventFieldSuggestions();
                 updateQuantityInputState();
                 typeSelect.focus();
             } catch (err) {
@@ -2978,6 +3215,7 @@
             form.reset();
             durationInput.value = '';
             buildDynamicFields();
+            refreshEventFieldSuggestions();
             editingId = null;
             submitBtn.textContent = 'Ajouter';
             selectedTimeSlot = null;
@@ -3055,6 +3293,7 @@
                 persistConfig();
                 populateTypeSelect();
                 buildDynamicFields();
+                refreshEventFieldSuggestions();
                 updateActiveProfileMeta();
                 showToast('Configuration chargée.');
             } catch (err) {
@@ -3073,6 +3312,7 @@
         persistConfig();
         populateTypeSelect();
         buildDynamicFields();
+        refreshEventFieldSuggestions();
         populateTeamSelect();
         loadHourQuantities();
         loadClosuresFromStorage();
@@ -3877,6 +4117,273 @@
     if(resetBtn) resetBtn.addEventListener('click', resetCfg);
   }catch(err){
     console.warn('cfg-ligne-save init skipped:', err);
+  }
+})();
+</script>
+<script>
+(function(){
+  try{
+    var $ = function(sel, ctx){ return (ctx || document).querySelector(sel); };
+    var box = $('#cfg-events-csv');
+    if(!box) return;
+
+    var fileInput = $('#evcsv-file');
+    var importBtn = $('#evcsv-import');
+    var templateBtn = $('#evcsv-template');
+    var exportBtn = $('#evcsv-export');
+    var message = $('#evcsv-msg');
+    var STORAGE_KEY = 'prodtrack_event_config_v1';
+
+    function setMessage(text){ if(message) message.textContent = text || ''; }
+    function norm(value){ return value == null ? '' : String(value).trim(); }
+    function lower(value){ return norm(value).toLowerCase(); }
+    function pushUnique(list, value){
+      if(!Array.isArray(list)) return;
+      var val = norm(value);
+      if(!val) return;
+      if(list.indexOf(val) !== -1) return;
+      list.push(val);
+    }
+
+    function detectDelimiter(text){
+      var firstLine = (text.split(/\r?\n/)[0] || '');
+      return firstLine.split(';').length > firstLine.split(',').length ? ';' : ',';
+    }
+
+    function parseCSV(text){
+      var delim = detectDelimiter(text);
+      var rows = [];
+      var current = [];
+      var value = '';
+      var insideQuotes = false;
+      for(var i=0;i<text.length;i++){
+        var ch = text[i];
+        if(ch === '"'){
+          if(insideQuotes && text[i+1] === '"'){
+            value += '"';
+            i++;
+          }else{
+            insideQuotes = !insideQuotes;
+          }
+        }else if(ch === delim && !insideQuotes){
+          current.push(value);
+          value = '';
+        }else if((ch === '\n' || ch === '\r') && !insideQuotes){
+          if(ch === '\r' && text[i+1] === '\n') i++;
+          current.push(value);
+          rows.push(current);
+          current = [];
+          value = '';
+        }else{
+          value += ch;
+        }
+      }
+      current.push(value);
+      rows.push(current);
+      rows = rows.filter(function(row){ return row.some(function(cell){ return norm(cell).length; }); });
+      if(!rows.length) throw new Error('Fichier CSV vide');
+      var header = rows.shift().map(lower);
+      var idx = {};
+      ['type','categorie','cause5m','detail','equipement','article','zone'].forEach(function(key){
+        idx[key] = header.indexOf(key);
+      });
+      if(idx.type < 0 && idx.equipement < 0 && idx.article < 0 && idx.zone < 0){
+        throw new Error('Colonnes manquantes');
+      }
+      var model = { tree: {}, equips: [], articles: [], zones: [] };
+      rows.forEach(function(row){
+        var cells = header.map(function(_, colIndex){ return norm(row[colIndex]); });
+        var type = idx.type >= 0 ? cells[idx.type] : '';
+        var categorie = idx.categorie >= 0 ? cells[idx.categorie] : '';
+        var cause = idx.cause5m >= 0 ? cells[idx.cause5m] : '';
+        var detail = idx.detail >= 0 ? cells[idx.detail] : '';
+        if(type){
+          var typeNode = model.tree[type];
+          if(!typeNode){
+            typeNode = { categories: {} };
+            model.tree[type] = typeNode;
+          }
+          if(categorie){
+            var catNode = typeNode.categories[categorie];
+            if(!catNode){
+              catNode = { causes: {} };
+              typeNode.categories[categorie] = catNode;
+            }
+            if(cause){
+              var causeNode = catNode.causes[cause];
+              if(!causeNode){
+                causeNode = { details: [] };
+                catNode.causes[cause] = causeNode;
+              }
+              if(detail){
+                pushUnique(causeNode.details, detail);
+              }
+            }
+          }
+        }
+        if(idx.equipement >= 0) pushUnique(model.equips, cells[idx.equipement]);
+        if(idx.article >= 0) pushUnique(model.articles, cells[idx.article]);
+        if(idx.zone >= 0) pushUnique(model.zones, cells[idx.zone]);
+      });
+      return model;
+    }
+
+    function saveModel(model){
+      try{
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(model));
+      }catch(err){
+        console.warn('events-csv save failed:', err);
+      }
+    }
+
+    function loadModel(){
+      try{
+        var raw = localStorage.getItem(STORAGE_KEY);
+        if(!raw) return { tree: {}, equips: [], articles: [], zones: [] };
+        var parsed = JSON.parse(raw);
+        return {
+          tree: parsed && typeof parsed.tree === 'object' ? parsed.tree : {},
+          equips: Array.isArray(parsed?.equips) ? parsed.equips : [],
+          articles: Array.isArray(parsed?.articles) ? parsed.articles : [],
+          zones: Array.isArray(parsed?.zones) ? parsed.zones : []
+        };
+      }catch(err){
+        console.warn('events-csv load failed:', err);
+        return { tree: {}, equips: [], articles: [], zones: [] };
+      }
+    }
+
+    function csvEscape(value){
+      var str = norm(value);
+      if(!str) return '';
+      if(/[",\n]/.test(str)){
+        return '"' + str.replace(/"/g, '""') + '"';
+      }
+      return str;
+    }
+
+    function modelToCSV(model){
+      var lines = ['type,categorie,cause5m,detail,equipement,article,zone'];
+      var tree = model.tree || {};
+      Object.keys(tree).forEach(function(typeName){
+        var categories = tree[typeName]?.categories || {};
+        var categoryKeys = Object.keys(categories);
+        if(!categoryKeys.length){
+          lines.push([csvEscape(typeName),'','','','','',''].join(','));
+          return;
+        }
+        categoryKeys.forEach(function(categoryName){
+          var causes = categories[categoryName]?.causes || {};
+          var causeKeys = Object.keys(causes);
+          if(!causeKeys.length){
+            lines.push([csvEscape(typeName),csvEscape(categoryName),'','','','',''].join(','));
+            return;
+          }
+          causeKeys.forEach(function(causeName){
+            var details = Array.isArray(causes[causeName].details) && causes[causeName].details.length ? causes[causeName].details : [''];
+            details.forEach(function(detailName){
+              lines.push([
+                csvEscape(typeName),
+                csvEscape(categoryName),
+                csvEscape(causeName),
+                csvEscape(detailName),
+                '',
+                '',
+                ''
+              ].join(','));
+            });
+          });
+        });
+      });
+      (model.equips || []).forEach(function(eq){
+        lines.push(['','','','', csvEscape(eq), '', ''].join(','));
+      });
+      (model.articles || []).forEach(function(article){
+        lines.push(['','','','','', csvEscape(article), ''].join(','));
+      });
+      (model.zones || []).forEach(function(zone){
+        lines.push(['','','','','','', csvEscape(zone)].join(','));
+      });
+      return lines.join('\n');
+    }
+
+    function broadcast(model){
+      try{
+        window.dispatchEvent(new CustomEvent('prodtrack:events-config', { detail: { model: model } }));
+      }catch(err){
+        console.warn('events-csv broadcast failed:', err);
+      }
+    }
+
+    if(importBtn){
+      importBtn.addEventListener('click', function(){
+        if(!fileInput || !fileInput.files || !fileInput.files.length){
+          setMessage('Aucun fichier sélectionné.');
+          return;
+        }
+        var file = fileInput.files[0];
+        var reader = new FileReader();
+        reader.onload = function(evt){
+          try{
+            var model = parseCSV(evt.target.result || '');
+            saveModel(model);
+            broadcast(model);
+            var typeCount = Object.keys(model.tree || {}).length;
+            setMessage('Import réussi (' + typeCount + ' type' + (typeCount > 1 ? 's' : '') + ').');
+          }catch(err){
+            console.warn('events-csv import failed:', err);
+            setMessage('Erreur: ' + err.message);
+          }
+          if(fileInput) fileInput.value = '';
+        };
+        reader.onerror = function(){
+          setMessage('Lecture fichier impossible.');
+        };
+        reader.readAsText(file, 'UTF-8');
+      });
+    }
+
+    if(templateBtn){
+      templateBtn.addEventListener('click', function(){
+        var sample = 'type,categorie,cause5m,detail,equipement,article,zone\n' +
+          'Panne,Mécanique,Rupture composant,Casse engrenage,REMPL,ART001,Zone A\n' +
+          'Réglage,Calage format,Réglage standard,Hauteur buse,REMPL,ART002,Zone B\n' +
+          'Qualité,Aspect,Étiquette pliée,,MIRG,ART003,Zone C';
+        var blob = new Blob([sample], { type: 'text/csv' });
+        var link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = 'modele_evenements.csv';
+        document.body.appendChild(link);
+        link.click();
+        setTimeout(function(){
+          URL.revokeObjectURL(link.href);
+          link.remove();
+        }, 0);
+        setMessage('Modèle téléchargé.');
+      });
+    }
+
+    if(exportBtn){
+      exportBtn.addEventListener('click', function(){
+        var model = loadModel();
+        var csv = modelToCSV(model);
+        var blob = new Blob([csv], { type: 'text/csv' });
+        var link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = 'evenements_export.csv';
+        document.body.appendChild(link);
+        link.click();
+        setTimeout(function(){
+          URL.revokeObjectURL(link.href);
+          link.remove();
+        }, 0);
+        setMessage('Export généré.');
+      });
+    }
+
+    broadcast(loadModel());
+  }catch(err){
+    console.warn('cfg-events-csv init skipped:', err);
   }
 })();
 </script>
