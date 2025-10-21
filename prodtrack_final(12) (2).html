@@ -1855,6 +1855,15 @@
         if (!profileMinutesAjust || !profileDelta || !profileValidation) return;
         const metrics = getMetrics();
 
+        const syncHourTiles = (hour, ajust, causes) => {
+            if (typeof window._ppUpdateHourTiles !== 'function') return;
+            try {
+                window._ppUpdateHourTiles(hour, ajust, metrics, events, causes);
+            } catch (err) {
+                console.warn('Hour tiles update failed:', err);
+            }
+        };
+
         if (profileOeeTarget) {
             profileOeeTarget.textContent = Number.isFinite(metrics.oeeTarget)
                 ? `${(Math.round(metrics.oeeTarget * 10) / 10).toFixed(1)}%`
@@ -1887,6 +1896,7 @@
             if (profileValidationHint) {
                 profileValidationHint.textContent = 'Sélectionnez un créneau';
             }
+            syncHourTiles(null, null, 0);
             return;
         }
 
@@ -1978,6 +1988,8 @@
                     : 'Compléter les informations';
             }
         }
+
+        syncHourTiles(hour, minutesAjust, minutesCauses);
     }
 
     function getProductionStorageKey() {
@@ -2034,6 +2046,15 @@
     function updateQuantityInputState() {
         if (!hourQuantityInput) {
             updateActiveProfileMeta();
+            if (typeof window._ppUpdateHourTiles === 'function') {
+                try {
+                    const hourForTiles = selectedTimeSlot;
+                    const causes = hourForTiles ? calculateMinutesCausesForHour(hourForTiles) : 0;
+                    window._ppUpdateHourTiles(hourForTiles, null, getMetrics(), events, causes);
+                } catch (err) {
+                    console.warn('Hour tiles update failed:', err);
+                }
+            }
             return;
         }
         if (!selectedTimeSlot) {
@@ -2041,6 +2062,13 @@
             hourQuantityInput.disabled = true;
             hourQuantityInput.placeholder = 'Sélectionnez un créneau';
             updateActiveProfileMeta();
+            if (typeof window._ppUpdateHourTiles === 'function') {
+                try {
+                    window._ppUpdateHourTiles(null, null, getMetrics(), events, 0);
+                } catch (err) {
+                    console.warn('Hour tiles update failed:', err);
+                }
+            }
             return;
         }
         hourQuantityInput.disabled = false;
@@ -2048,6 +2076,14 @@
         hourQuantityInput.value = existing !== undefined ? existing : '';
         hourQuantityInput.placeholder = 'Quantité produite';
         updateActiveProfileMeta();
+        if (typeof window._ppUpdateHourTiles === 'function') {
+            try {
+                const causes = calculateMinutesCausesForHour(selectedTimeSlot);
+                window._ppUpdateHourTiles(selectedTimeSlot, null, getMetrics(), events, causes);
+            } catch (err) {
+                console.warn('Hour tiles update failed:', err);
+            }
+        }
     }
 
     function updateSlotQuantityIndicator(hour) {
@@ -2957,6 +2993,16 @@
         }
 
         updateActiveProfileMeta();
+
+        if (typeof window._ppUpdateHourTiles === 'function') {
+            try {
+                const hourForTiles = selectedTimeSlot;
+                const causes = hourForTiles ? calculateMinutesCausesForHour(hourForTiles) : 0;
+                window._ppUpdateHourTiles(hourForTiles, null, metrics, events, causes);
+            } catch (err) {
+                console.warn('Hour tiles update failed:', err);
+            }
+        }
     }
 
     function resetForm(preserveType = false) {
@@ -3328,6 +3374,164 @@
     }
 
     initialize();
+})();
+</script>
+
+<script>
+(function(){
+  if (window._ppUpdateHourTiles) return;
+
+  function toNumber(value) {
+    if (value === null || value === undefined || value === '') return NaN;
+    var numeric = Number(value);
+    if (Number.isFinite(numeric)) return numeric;
+    var parsed = parseFloat(String(value).replace(',', '.'));
+    return Number.isFinite(parsed) ? parsed : NaN;
+  }
+
+  function parseMinutesText(text) {
+    if (!text) return NaN;
+    var cleaned = String(text).replace(/[^0-9,.-]/g, '').replace(',', '.');
+    if (!cleaned) return NaN;
+    var parsed = parseFloat(cleaned);
+    return Number.isFinite(parsed) ? parsed : NaN;
+  }
+
+  function ensureHour(hour) {
+    if (hour === null || hour === undefined) return null;
+    var str = String(hour).trim();
+    if (!str) return null;
+    if (/^\d{2}$/.test(str)) return str;
+    if (/^\d$/.test(str)) return ('0' + str);
+    if (/^\d{2}:\d{2}$/.test(str)) return str.slice(0, 2);
+    return str.length >= 2 ? str.slice(0, 2) : null;
+  }
+
+  function isStopEvent(event) {
+    if (!event) return false;
+    var label = ((event.type || '') + ' ' + (event.categorie || event.cat || '')).toLowerCase();
+    return /arr|arret|arrêt|panne|stop|downtime/.test(label);
+  }
+
+  function collectDuration(event) {
+    if (!event) return 0;
+    var val = toNumber(event.duree_min ?? event.duration ?? event.minutes ?? event.durqty);
+    return Number.isFinite(val) ? val : 0;
+  }
+
+  window._ppUpdateHourTiles = function(selectedHour, minutesAjust, metrics, eventList, minutesCauses) {
+    try {
+      var shMin = document.getElementById('sh-min-total');
+      var shCause = document.getElementById('sh-top-cause');
+      var shStatus = document.getElementById('sh-status');
+      var shRemaining = document.getElementById('sh-remaining');
+      var shWindow = document.getElementById('sh-window');
+      var vgStatus = document.getElementById('vg-status');
+      var vgMsg = document.getElementById('vg-msg');
+
+      if (!shMin && !shCause && !shStatus && !shRemaining && !shWindow && !vgStatus && !vgMsg) {
+        return;
+      }
+
+      var hourStr = ensureHour(selectedHour);
+      var events = Array.isArray(eventList) ? eventList : [];
+      var hourEvents = hourStr
+        ? events.filter(function(evt){
+            var h = evt && evt.heure ? String(evt.heure).slice(0, 2) : '';
+            return h === hourStr;
+          })
+        : [];
+
+      var stopMinutes = toNumber(minutesCauses);
+      if (!Number.isFinite(stopMinutes)) {
+        stopMinutes = hourEvents.reduce(function(total, evt){
+          if (!isStopEvent(evt)) return total;
+          return total + collectDuration(evt);
+        }, 0);
+      }
+      if (!Number.isFinite(stopMinutes)) {
+        stopMinutes = 0;
+      }
+
+      var adjustMinutes = toNumber(minutesAjust);
+      if (!Number.isFinite(adjustMinutes)) {
+        var ajustEl = document.getElementById('profileMinutesAjust');
+        adjustMinutes = parseMinutesText(ajustEl && ajustEl.textContent);
+      }
+      if (!Number.isFinite(adjustMinutes)) {
+        var resteEl = document.getElementById('profileMinutesReste');
+        var resteValue = parseMinutesText(resteEl && resteEl.textContent);
+        if (Number.isFinite(resteValue)) {
+          adjustMinutes = resteValue + stopMinutes;
+        }
+      }
+      if (!Number.isFinite(adjustMinutes)) {
+        adjustMinutes = stopMinutes;
+      }
+
+      var remaining = Math.max(0, adjustMinutes - stopMinutes);
+      var tolerance = metrics && (metrics.minutesTolerance ?? metrics.minutes_tolerance);
+      tolerance = toNumber(tolerance);
+      if (!Number.isFinite(tolerance) || tolerance < 0) {
+        tolerance = 0;
+      }
+
+      var topCause = '—';
+      if (hourEvents.length) {
+        var totals = new Map();
+        hourEvents.forEach(function(evt){
+          var key = (evt && (evt.cause || evt.cause5m || evt.categorie || evt.type)) || '—';
+          var duration = collectDuration(evt);
+          totals.set(key, (totals.get(key) || 0) + duration);
+        });
+        var best = '—';
+        var max = -1;
+        totals.forEach(function(total, key){
+          if (total > max && key) {
+            max = total;
+            best = key;
+          }
+        });
+        topCause = best;
+      }
+
+      var roundedStops = Math.round(stopMinutes);
+      var roundedRemaining = Math.max(0, Math.round(remaining));
+      var withinTolerance = remaining <= tolerance + 0.049;
+
+      if (shMin) {
+        shMin.textContent = roundedStops + ' min';
+      }
+      if (shCause) {
+        shCause.textContent = hourEvents.length ? topCause : '—';
+      }
+      if (shRemaining) {
+        shRemaining.textContent = roundedRemaining + ' min à répartir';
+      }
+      if (shWindow) {
+        if (hourStr) {
+          var nextHour = String((Number(hourStr) + 1) % 24).padStart(2, '0');
+          shWindow.textContent = 'Fenêtre: ' + hourStr + ':00–' + nextHour + ':00';
+        } else {
+          shWindow.textContent = 'Fenêtre: —:—–—:—';
+        }
+      }
+
+      if (shStatus) {
+        shStatus.textContent = withinTolerance ? 'OK' : 'À équilibrer';
+        shStatus.style.color = withinTolerance ? '#4ade80' : '#f59e0b';
+      }
+      if (vgStatus) {
+        vgStatus.textContent = withinTolerance ? 'Prête' : 'À compléter';
+        vgStatus.style.color = withinTolerance ? '#4ade80' : '#f59e0b';
+      }
+      if (vgMsg) {
+        vgMsg.textContent = withinTolerance ? 'Delta équilibré' : 'Compléter les champs / minutes';
+      }
+    } catch (err) {
+      console.warn('Hour tiles sync failed:', err);
+    }
+  };
 })();
 </script>
 
@@ -4123,165 +4327,128 @@
 </script>
 <script>
 (function(){
-  try{
-    var $ = function(sel, ctx){ return (ctx || document).querySelector(sel); };
-    var box = $('#cfg-events-csv');
-    if(!box) return;
+  try {
+    var section = document.getElementById('cfg-events-csv');
+    if (!section) return;
 
-    var fileInput = $('#evcsv-file');
-    var importBtn = $('#evcsv-import');
-    var templateBtn = $('#evcsv-template');
-    var exportBtn = $('#evcsv-export');
-    var message = $('#evcsv-msg');
+    var fileInput = document.getElementById('evcsv-file');
+    var importBtn = document.getElementById('evcsv-import');
+    var templateBtn = document.getElementById('evcsv-template');
+    var exportBtn = document.getElementById('evcsv-export');
+    var message = document.getElementById('evcsv-msg');
     var STORAGE_KEY = 'prodtrack_event_config_v1';
 
-    function setMessage(text){ if(message) message.textContent = text || ''; }
-    function norm(value){ return value == null ? '' : String(value).trim(); }
-    function lower(value){ return norm(value).toLowerCase(); }
-    function pushUnique(list, value){
-      if(!Array.isArray(list)) return;
+    function setMessage(text, color) {
+      if (!message) return;
+      message.textContent = text || '';
+      message.style.color = color || '';
+    }
+
+    function norm(value) {
+      return value == null ? '' : String(value).trim();
+    }
+
+    function lower(value) {
+      return norm(value).toLowerCase();
+    }
+
+    function pushUnique(list, value) {
+      if (!Array.isArray(list)) return;
       var val = norm(value);
-      if(!val) return;
-      if(list.indexOf(val) !== -1) return;
+      if (!val || list.indexOf(val) !== -1) return;
       list.push(val);
     }
 
-    function detectDelimiter(text){
-      var firstLine = (text.split(/\r?\n/)[0] || '');
-      return firstLine.split(';').length > firstLine.split(',').length ? ';' : ',';
-    }
-
-    function parseCSV(text){
-      var delim = detectDelimiter(text);
-      var rows = [];
-      var current = [];
-      var value = '';
-      var insideQuotes = false;
-      for(var i=0;i<text.length;i++){
-        var ch = text[i];
-        if(ch === '"'){
-          if(insideQuotes && text[i+1] === '"'){
-            value += '"';
-            i++;
-          }else{
-            insideQuotes = !insideQuotes;
-          }
-        }else if(ch === delim && !insideQuotes){
-          current.push(value);
-          value = '';
-        }else if((ch === '\n' || ch === '\r') && !insideQuotes){
-          if(ch === '\r' && text[i+1] === '\n') i++;
-          current.push(value);
-          rows.push(current);
-          current = [];
-          value = '';
-        }else{
-          value += ch;
-        }
-      }
-      current.push(value);
-      rows.push(current);
-      rows = rows.filter(function(row){ return row.some(function(cell){ return norm(cell).length; }); });
-      if(!rows.length) throw new Error('Fichier CSV vide');
+    function parseCSV(text) {
+      var delim = (text.includes(';') && !text.includes(',')) ? ';' : ',';
+      var rows = text.split(/\r?\n/)
+        .map(function(line){ return line.split(delim).map(norm); })
+        .filter(function(row){ return row.some(function(cell){ return cell.length; }); });
+      if (!rows.length) throw new Error('Fichier CSV vide');
       var header = rows.shift().map(lower);
       var idx = {};
       ['type','categorie','cause5m','detail','equipement','article','zone'].forEach(function(key){
         idx[key] = header.indexOf(key);
       });
-      if(idx.type < 0 && idx.equipement < 0 && idx.article < 0 && idx.zone < 0){
+      if (idx.type < 0 && idx.equipement < 0 && idx.article < 0 && idx.zone < 0) {
         throw new Error('Colonnes manquantes');
       }
       var model = { tree: {}, equips: [], articles: [], zones: [] };
       rows.forEach(function(row){
-        var cells = header.map(function(_, colIndex){ return norm(row[colIndex]); });
-        var type = idx.type >= 0 ? cells[idx.type] : '';
-        var categorie = idx.categorie >= 0 ? cells[idx.categorie] : '';
-        var cause = idx.cause5m >= 0 ? cells[idx.cause5m] : '';
-        var detail = idx.detail >= 0 ? cells[idx.detail] : '';
-        if(type){
+        var type = idx.type >= 0 ? norm(row[idx.type]) : '';
+        var categorie = idx.categorie >= 0 ? norm(row[idx.categorie]) : '';
+        var cause5m = idx.cause5m >= 0 ? norm(row[idx.cause5m]) : '';
+        var detail = idx.detail >= 0 ? norm(row[idx.detail]) : '';
+        if (type) {
+          if (!model.tree[type]) model.tree[type] = { categories: {} };
           var typeNode = model.tree[type];
-          if(!typeNode){
-            typeNode = { categories: {} };
-            model.tree[type] = typeNode;
-          }
-          if(categorie){
-            var catNode = typeNode.categories[categorie];
-            if(!catNode){
-              catNode = { causes: {} };
-              typeNode.categories[categorie] = catNode;
-            }
-            if(cause){
-              var causeNode = catNode.causes[cause];
-              if(!causeNode){
-                causeNode = { details: [] };
-                catNode.causes[cause] = causeNode;
-              }
-              if(detail){
-                pushUnique(causeNode.details, detail);
+          if (categorie) {
+            if (!typeNode.categories[categorie]) typeNode.categories[categorie] = { causes: {} };
+            var categoryNode = typeNode.categories[categorie];
+            if (cause5m) {
+              if (!categoryNode.causes[cause5m]) categoryNode.causes[cause5m] = { details: [] };
+              var causeNode = categoryNode.causes[cause5m];
+              if (detail && causeNode.details.indexOf(detail) === -1) {
+                causeNode.details.push(detail);
               }
             }
           }
         }
-        if(idx.equipement >= 0) pushUnique(model.equips, cells[idx.equipement]);
-        if(idx.article >= 0) pushUnique(model.articles, cells[idx.article]);
-        if(idx.zone >= 0) pushUnique(model.zones, cells[idx.zone]);
+        if (idx.equipement >= 0) pushUnique(model.equips, row[idx.equipement]);
+        if (idx.article >= 0) pushUnique(model.articles, row[idx.article]);
+        if (idx.zone >= 0) pushUnique(model.zones, row[idx.zone]);
       });
       return model;
     }
 
-    function saveModel(model){
-      try{
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(model));
-      }catch(err){
-        console.warn('events-csv save failed:', err);
-      }
-    }
-
-    function loadModel(){
-      try{
+    function loadModel() {
+      try {
         var raw = localStorage.getItem(STORAGE_KEY);
-        if(!raw) return { tree: {}, equips: [], articles: [], zones: [] };
+        if (!raw) return { tree: {}, equips: [], articles: [], zones: [] };
         var parsed = JSON.parse(raw);
         return {
           tree: parsed && typeof parsed.tree === 'object' ? parsed.tree : {},
-          equips: Array.isArray(parsed?.equips) ? parsed.equips : [],
-          articles: Array.isArray(parsed?.articles) ? parsed.articles : [],
-          zones: Array.isArray(parsed?.zones) ? parsed.zones : []
+          equips: Array.isArray(parsed && parsed.equips) ? parsed.equips : [],
+          articles: Array.isArray(parsed && parsed.articles) ? parsed.articles : [],
+          zones: Array.isArray(parsed && parsed.zones) ? parsed.zones : []
         };
-      }catch(err){
-        console.warn('events-csv load failed:', err);
+      } catch (err) {
+        console.warn('cfg-events-csv load failed:', err);
         return { tree: {}, equips: [], articles: [], zones: [] };
       }
     }
 
-    function csvEscape(value){
+    function csvEscape(value) {
       var str = norm(value);
-      if(!str) return '';
-      if(/[",\n]/.test(str)){
+      if (!str) return '';
+      if (/[",\n;]/.test(str)) {
         return '"' + str.replace(/"/g, '""') + '"';
       }
       return str;
     }
 
-    function modelToCSV(model){
+    function modelToCSV(model) {
       var lines = ['type,categorie,cause5m,detail,equipement,article,zone'];
       var tree = model.tree || {};
       Object.keys(tree).forEach(function(typeName){
-        var categories = tree[typeName]?.categories || {};
-        var categoryKeys = Object.keys(categories);
-        if(!categoryKeys.length){
+        var typeNode = tree[typeName] || {};
+        var categories = typeNode.categories || {};
+        var catKeys = Object.keys(categories);
+        if (!catKeys.length) {
           lines.push([csvEscape(typeName),'','','','','',''].join(','));
           return;
         }
-        categoryKeys.forEach(function(categoryName){
-          var causes = categories[categoryName]?.causes || {};
+        catKeys.forEach(function(categoryName){
+          var categoryNode = categories[categoryName] || {};
+          var causes = categoryNode.causes || {};
           var causeKeys = Object.keys(causes);
-          if(!causeKeys.length){
+          if (!causeKeys.length) {
             lines.push([csvEscape(typeName),csvEscape(categoryName),'','','','',''].join(','));
             return;
           }
           causeKeys.forEach(function(causeName){
-            var details = Array.isArray(causes[causeName].details) && causes[causeName].details.length ? causes[causeName].details : [''];
+            var causeNode = causes[causeName] || {};
+            var details = Array.isArray(causeNode.details) && causeNode.details.length ? causeNode.details : [''];
             details.forEach(function(detailName){
               lines.push([
                 csvEscape(typeName),
@@ -4308,49 +4475,56 @@
       return lines.join('\n');
     }
 
-    function broadcast(model){
-      try{
+    function hydrateSaisie(model) {
+      if (!model) return;
+      try {
         window.dispatchEvent(new CustomEvent('prodtrack:events-config', { detail: { model: model } }));
-      }catch(err){
-        console.warn('events-csv broadcast failed:', err);
+      } catch (err) {
+        console.warn('cfg-events-csv dispatch failed:', err);
       }
     }
 
-    if(importBtn){
+    function saveModel(model) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(model));
+      } catch (err) {
+        console.warn('cfg-events-csv save failed:', err);
+      }
+      hydrateSaisie(model);
+    }
+
+    if (importBtn) {
       importBtn.addEventListener('click', function(){
-        if(!fileInput || !fileInput.files || !fileInput.files.length){
-          setMessage('Aucun fichier sélectionné.');
+        if (!fileInput || !fileInput.files || !fileInput.files.length) {
+          setMessage('Aucun fichier sélectionné.', '');
           return;
         }
-        var file = fileInput.files[0];
         var reader = new FileReader();
         reader.onload = function(evt){
-          try{
+          try {
             var model = parseCSV(evt.target.result || '');
             saveModel(model);
-            broadcast(model);
             var typeCount = Object.keys(model.tree || {}).length;
-            setMessage('Import réussi (' + typeCount + ' type' + (typeCount > 1 ? 's' : '') + ').');
-          }catch(err){
-            console.warn('events-csv import failed:', err);
-            setMessage('Erreur: ' + err.message);
+            setMessage('Import réussi (' + typeCount + ' type' + (typeCount > 1 ? 's' : '') + ').', '#4ade80');
+          } catch (err) {
+            setMessage('Erreur: ' + err.message, '#fecaca');
           }
-          if(fileInput) fileInput.value = '';
+          if (fileInput) fileInput.value = '';
         };
         reader.onerror = function(){
-          setMessage('Lecture fichier impossible.');
+          setMessage('Lecture fichier impossible.', '#fecaca');
         };
-        reader.readAsText(file, 'UTF-8');
+        reader.readAsText(fileInput.files[0], 'UTF-8');
       });
     }
 
-    if(templateBtn){
+    if (templateBtn) {
       templateBtn.addEventListener('click', function(){
-        var sample = 'type,categorie,cause5m,detail,equipement,article,zone\n' +
-          'Panne,Mécanique,Rupture composant,Casse engrenage,REMPL,ART001,Zone A\n' +
-          'Réglage,Calage format,Réglage standard,Hauteur buse,REMPL,ART002,Zone B\n' +
-          'Qualité,Aspect,Étiquette pliée,,MIRG,ART003,Zone C';
-        var blob = new Blob([sample], { type: 'text/csv' });
+        var example = 'type,categorie,cause5m,detail,equipement,article,zone\n'
+          + 'Panne,Mécanique,Rupture composant,Casse engrenage,REMPL,ART001,Convoyeur\n'
+          + 'Réglage,Calage format,Réglage standard,Hauteur buse,REMPL,ART002,Zone A\n'
+          + 'Qualité,Aspect,Étiquette pliée,,MIRG,ART003,Zone B';
+        var blob = new Blob([example], { type: 'text/csv' });
         var link = document.createElement('a');
         link.href = URL.createObjectURL(blob);
         link.download = 'modele_evenements.csv';
@@ -4360,30 +4534,38 @@
           URL.revokeObjectURL(link.href);
           link.remove();
         }, 0);
-        setMessage('Modèle téléchargé.');
+        setMessage('Modèle téléchargé.', '');
       });
     }
 
-    if(exportBtn){
+    if (exportBtn) {
       exportBtn.addEventListener('click', function(){
-        var model = loadModel();
-        var csv = modelToCSV(model);
-        var blob = new Blob([csv], { type: 'text/csv' });
-        var link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = 'evenements_export.csv';
-        document.body.appendChild(link);
-        link.click();
-        setTimeout(function(){
-          URL.revokeObjectURL(link.href);
-          link.remove();
-        }, 0);
-        setMessage('Export généré.');
+        try {
+          var model = loadModel();
+          var csv = modelToCSV(model);
+          if (!csv) {
+            setMessage('Aucune configuration à exporter.', '');
+            return;
+          }
+          var blob = new Blob([csv], { type: 'text/csv' });
+          var link = document.createElement('a');
+          link.href = URL.createObjectURL(blob);
+          link.download = 'evenements_export.csv';
+          document.body.appendChild(link);
+          link.click();
+          setTimeout(function(){
+            URL.revokeObjectURL(link.href);
+            link.remove();
+          }, 0);
+          setMessage('Export généré.', '#4ade80');
+        } catch (err) {
+          setMessage('Erreur: export impossible', '#fecaca');
+        }
       });
     }
 
-    broadcast(loadModel());
-  }catch(err){
+    hydrateSaisie(loadModel());
+  } catch (err) {
     console.warn('cfg-events-csv init skipped:', err);
   }
 })();
@@ -4478,232 +4660,6 @@
 })();
 </script>
 
-
-<script>
-(function(){
-  try{
-    // Utils
-    var $ = (s,c)=> (c||document).querySelector(s);
-    var parse = s=>{try{return JSON.parse(s)}catch(e){return null}};
-    var pick  = (o,ks)=>{for(var i=0;i<ks.length;i++){if(o&&o[ks[i]]!=null)return o[ks[i]]}return''};
-    var nnum  = v=>{var t=String(v||'').replace(',','.'); var n=parseFloat(t); return isNaN(n)?0:n;};
-    var toISO = d=>{ if(!d) return ''; if(/^\d{4}-\d{2}-\d{2}$/.test(d)) return d; var x=new Date(d); return isNaN(x)?'':x.toISOString().slice(0,10); };
-    var toHHmm=v=>{ if(!v) return ''; var s=String(v).trim(); if(/^\d{2}:\d{2}$/.test(s)) return s; var d=new Date(s); return isNaN(d)?'':String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); };
-
-    // 0) Clean recap tuile si présente
-    var recap = $('#tile-recap-heure'); if (recap && recap.parentNode) recap.parentNode.removeChild(recap);
-    ['rh-window','rh-qty-h','rh-qty-target','rh-min-need','rh-min-causes','rh-min-gap','rh-top-cause','rh-top-count','rh-status','rh-msg']
-      .forEach(function(id){ var n=document.getElementById(id); if(n&&n.parentNode) n.parentNode.removeChild(n); });
-
-    // 1) Data
-    function loadRaw(){
-      var keys=['prodtrack_events','prodtrack_saisies','events','saisies'];
-      for(var i=0;i<keys.length;i++){ var v=localStorage.getItem(keys[i]); if(v){ var a=parse(v); if(Array.isArray(a)) return a; } }
-      var n=$('#prodtrack-data'); if(n&&n.textContent){ var a=parse(n.textContent); if(Array.isArray(a)) return a; }
-      return [];
-    }
-    function normalize(rows){
-      return rows.map(function(r){
-        return {
-          date: toISO(pick(r,['date','jour','day'])) || toISO(r.timestamp),
-          hour: toHHmm(pick(r,['hour','heure','time'])),
-          type: String(pick(r,['type'])||''),
-          cat : String(pick(r,['category','categorie','cat'])||''),
-          cause:String(pick(r,['cause'])||''),
-          dur  : String(pick(r,['minutes','duree','durée','qty','quantite','quantité','good','duration'])||'')
-        };
-      });
-    }
-    var ALL = normalize(loadRaw());
-
-    function selectedHourHH(){
-      var hEl = $('#heure') || $('input[type="time"]') || $('#slot-heure') || $('select[name*="heure" i]') || $('[aria-label*="heure" i]');
-      var val = hEl ? (hEl.value || hEl.textContent || '') : '';
-      if(val && /^\d{2}:\d{2}$/.test(val.trim())) return val.trim().slice(0,2);
-      var now=new Date(); return String(now.getHours()).padStart(2,'0');
-    }
-
-    function readCadenceCible(){
-      var cands=['#cadence','[name="cadence"]','input[id*="cadence" i]','input[name*="cadence" i]','[data-cadence]'];
-      for(var i=0;i<cands.length;i++){ var el=$(cands[i]); if(!el) continue; var v=('value' in el)?el.value:el.textContent; var n=nnum(v); if(n>0) return n; }
-      return 100;
-    }
-    function readQtyHeure(){
-      var cands=['#qty-heure','#qte-heure','[data-qty-hour]','[data-qte-heure]','input[id*="qte" i]'];
-      for(var i=0;i<cands.length;i++){ var el=$(cands[i]); if(!el) continue; var v=('value' in el)?el.value:el.textContent; var n=nnum(v); if(n>=0) return n; }
-      return 0;
-    }
-
-    function eventsForWindow(){
-      var dateISO = new Date().toISOString().slice(0,10);
-      var hh = selectedHourHH();
-      return ALL.filter(function(r){
-        if(r.date !== dateISO) return false;
-        var rh = r.hour ? r.hour.slice(0,2) : '';
-        return rh === hh;
-      });
-    }
-
-    function updateSyntheseHeure(){
-      var tile = $('#tile-synth-heure'); if(!tile) return;
-      var el = {
-        cause: $('#sh-top-cause', tile),
-        total: $('#sh-min-total', tile),
-        status:$('#sh-status', tile),
-        rem:   $('#sh-remaining', tile),
-        win:   $('#sh-window', tile)
-      };
-      var hh = selectedHourHH();
-      if(el.win) el.win.textContent = 'Fenêtre: '+hh+':00–'+hh+':59';
-
-      var list = eventsForWindow();
-      var minutes=0, freq={}, top='—';
-      list.forEach(function(r){
-        var isStop = /arr|arret|arrêt|panne|stop|downtime/i.test((r.type+' '+r.cat).toLowerCase());
-        var v=nnum(r.dur);
-        if(isStop) minutes += v;
-        var k=r.cause || r.cat || r.type || 'Autre';
-        freq[k]=(freq[k]||0)+1;
-      });
-      Object.keys(freq).forEach(function(k){ if(freq[k] > (freq[top]||0)) top=k; });
-
-      var cad = readCadenceCible();
-      var qty_h = readQtyHeure();
-      var qty_target = cad;
-      var delta_u = Math.max(0, qty_target - qty_h);
-      var min_need = cad ? Math.round(delta_u * 60 / cad) : 0;
-      var remaining = Math.max(0, min_need - minutes);
-
-      if(el.cause) el.cause.textContent = top || '—';
-      if(el.total) el.total.textContent = Math.round(minutes)+' min';
-      if(el.rem)   el.rem.textContent   = remaining+' min à répartir';
-      if(el.status){
-        if(remaining>1){ el.status.textContent='À équilibrer'; el.status.style.color='#ef4444'; }
-        else{ el.status.textContent='OK'; el.status.style.color='#10b981'; }
-      }
-    }
-
-    function updateValidationGlobale(){
-      var box = $('#tile-validation-globale'); if(!box) return;
-      var status = $('#vg-status', box), msg = $('#vg-msg', box);
-      if(!status || !msg) return;
-
-      var cad = readCadenceCible();
-      var qty_h = readQtyHeure();
-      var qty_target = cad;
-      var delta_u = Math.max(0, qty_target - qty_h);
-      var min_need = cad ? Math.round(delta_u * 60 / cad) : 0;
-
-      var minutes=0;
-      eventsForWindow().forEach(function(r){
-        var isStop=/arr|arret|arrêt|panne|stop|downtime/i.test((r.type+' '+r.cat).toLowerCase());
-        var v=nnum(r.dur); if(isStop) minutes+=v;
-      });
-
-      var gap = Math.max(0, min_need - minutes);
-      var missingFields = false;
-
-      if(missingFields){
-        status.textContent='INCOMPLÈTE'; status.style.color='#f59e0b';
-        msg.textContent='Compléter les champs manquants';
-      } else if (gap>1){
-        status.textContent='À ÉQUILIBRER'; status.style.color='#ef4444';
-        msg.textContent='Répartir '+gap+' min sur des causes';
-      } else {
-        status.textContent='OK'; status.style.color='#10b981';
-        msg.textContent='Saisie équilibrée';
-      }
-    }
-
-    function refresh(){
-      updateSyntheseHeure();
-      updateValidationGlobale();
-    }
-    refresh();
-
-    var hEl = $('#heure') || $('input[type="time"]') || $('#slot-heure') || $('select[name*="heure" i]') || $('[aria-label*="heure" i]');
-    if(hEl){ hEl.addEventListener('change', refresh); hEl.addEventListener('input', refresh); }
-    setInterval(refresh, 30000);
-  }catch(e){ console.warn('Revert to two tiles skipped:', e); }
-})();
-</script>
-<script>
-(function(){
-  try{
-    function $(s,c){ return (c||document).querySelector(s); }
-    function pick(arr){ for(var i=0;i<arr.length;i++){ var el=$(arr[i]); if(el) return el; } return null; }
-    function numOf(el){ if(!el) return NaN; var v=(el.value||el.textContent||'').toString().replace(',','.'); var n=parseFloat(v); return isNaN(n)?NaN:n; }
-    function setNum(el, n){
-      if(!el || isNaN(n)) return;
-      if('value' in el) el.value = (Math.round(n*100)/100).toString().replace('.',',');
-      else el.textContent = (Math.round(n*100)/100).toString().replace('.',',');
-      el.dispatchEvent(new Event('input', {bubbles:true}));
-      el.dispatchEvent(new Event('change', {bubbles:true}));
-    }
-
-    var pageSaisie = pick(['#page-saisie','[data-app-root]','main','#content','.content']) || document;
-    var cadenceInput = pick([
-      '#cadence','[name="cadence"]','input[id*="cadence" i]','input[name*="cadence" i]',
-      'input[aria-label*="cadence" i]'
-    ]);
-    var oeeInput = pick([
-      '#oee-cible','[name="oee-cible"]','input[id*="oee" i]','input[name*="oee" i]','input[aria-label*="oee" i]'
-    ]);
-
-    if(!cadenceInput) cadenceInput = pick(['[data-cadence]','span[id*="cadence" i]','div[id*="cadence" i]']);
-    if(!oeeInput)     oeeInput     = pick(['[data-oee]','span[id*="oee" i]','div[id*="oee" i]']);
-
-    var base = {
-      cadence: numOf(cadenceInput),
-      oee:     numOf(oeeInput)
-    };
-
-    if(isNaN(base.cadence)) base.cadence = 100;
-    if(isNaN(base.oee))     base.oee     = 80;
-
-    var profiles = {
-      '':           function(){ return {cadence: base.cadence, oee: base.oee}; },
-      'jour-standard': function(){ return {cadence: base.cadence,            oee: base.oee}; },
-      'soir-haute':    function(){ return {cadence: base.cadence*1.10,       oee: Math.min(100, base.oee+5)}; },
-      'nuit-maint':    function(){ return {cadence: base.cadence*0.70,       oee: Math.max(0,  base.oee-15)}; }
-    };
-
-    function applyProfile(key){
-      var calc = (profiles[key]||profiles[''])();
-      setNum(cadenceInput, calc.cadence);
-      setNum(oeeInput,     calc.oee);
-      try { localStorage.setItem('prodtrack_profil_actif', key); } catch(e){}
-      var note = $('#profil-note');
-      if(note){
-        var txt = {
-          '': 'La sélection ajuste automatiquement la cadence et l’OEE cible.',
-          'jour-standard':'Profil “Jour – Standard” appliqué.',
-          'soir-haute':'Profil “Soir – Haute cadence” appliqué (+10% cadence, +5 pts OEE).',
-          'nuit-maint':'Profil “Nuit – Maintenance” appliqué (-30% cadence, -15 pts OEE).'
-        }[key] || 'Profil appliqué.';
-        note.textContent = txt;
-      }
-    }
-
-    var select = $('#profil-actif');
-    if(!select) return;
-
-    var saved = '';
-    try { saved = localStorage.getItem('prodtrack_profil_actif') || ''; } catch(e){}
-    if(saved && select.querySelector('option[value="'+saved+'"]')) {
-      select.value = saved;
-      applyProfile(saved);
-    }
-
-    select.addEventListener('change', function(){
-      applyProfile(select.value || '');
-    });
-
-  }catch(err){
-    console.warn('Profil actif init skipped:', err);
-  }
-})();
-</script>
 
   <script>
   (function(){
