@@ -4747,6 +4747,208 @@
   <script>
   (function(){
     try{
+      if (!document.getElementById('ux-toast')) {
+        var host = document.createElement('div');
+        host.id = 'ux-toast';
+        host.setAttribute('aria-live','polite');
+        host.style.cssText = 'position:fixed;right:16px;bottom:16px;z-index:9999;display:flex;flex-direction:column;gap:8px;pointer-events:none';
+        document.body.appendChild(host);
+      }
+      window._uxToast = function(message, background){
+        var wrap = document.createElement('div');
+        wrap.textContent = message;
+        wrap.style.cssText = 'pointer-events:auto;min-width:160px;max-width:360px;padding:10px 12px;border-radius:10px;font-weight:600;opacity:.98';
+        wrap.style.background = background || 'rgba(59,130,246,.15)';
+        wrap.style.border = '1px solid rgba(255,255,255,.15)';
+        wrap.style.color = '#fff';
+        document.getElementById('ux-toast').appendChild(wrap);
+        setTimeout(function(){ wrap.remove(); }, 2000);
+      };
+    }catch(e){ console.warn('toast init skipped', e); }
+  })();
+  </script>
+
+  <script>
+  (function(){
+    try{
+      function hook(btn){
+        if(!btn || btn._uxHooked) return;
+        btn._uxHooked = true;
+        btn.addEventListener('click', function(){
+          setTimeout(function(){ if(window._uxToast) window._uxToast('Événement ajouté'); }, 50);
+        });
+      }
+      ['#btn-add-event','button[id*="ajout" i]','button[id*="add" i]','button[name*="event" i]']
+        .forEach(function(sel){
+          document.querySelectorAll(sel).forEach(hook);
+        });
+    }catch(e){ console.warn('event added toast skipped', e); }
+  })();
+  </script>
+
+  <script>
+  (function(){
+    try{
+      function notify(){ if(window._uxToast) window._uxToast('Enregistré'); }
+
+      var profileBox = document.getElementById('cfg-profiles');
+      if(profileBox && !profileBox.dataset.uxToastBound){
+        profileBox.dataset.uxToastBound = '1';
+        var profileList = document.getElementById('pf-list');
+        if(profileList){
+          profileList.addEventListener('change', function(event){
+            var target = event.target ? event.target.closest('input') : null;
+            if(target){
+              setTimeout(notify, 50);
+            }
+          });
+        }
+        profileBox.addEventListener('click', function(event){
+          var actionable = event.target ? event.target.closest('#pf-add, .pf-del, .pf-up, .pf-down') : null;
+          if(actionable){
+            setTimeout(notify, 50);
+          }
+        });
+      }
+
+      var teamBox = document.getElementById('cfg-teams');
+      if(teamBox && !teamBox.dataset.uxToastBound){
+        teamBox.dataset.uxToastBound = '1';
+        var teamList = document.getElementById('tm-list');
+        if(teamList){
+          teamList.addEventListener('change', function(event){
+            var target = event.target ? event.target.closest('input') : null;
+            if(target){
+              setTimeout(notify, 50);
+            }
+          });
+        }
+        teamBox.addEventListener('click', function(event){
+          var actionable = event.target ? event.target.closest('#tm-add, .tm-del, .tm-up, .tm-down') : null;
+          if(actionable){
+            setTimeout(notify, 50);
+          }
+        });
+      }
+    }catch(e){ console.warn('save toast skipped', e); }
+  })();
+  </script>
+
+  <script>
+  (function(){
+    try{
+      var statusNode = document.getElementById('evcsv-msg');
+      if(!statusNode) return;
+      var observer = new MutationObserver(function(){
+        var text = (statusNode.textContent || '').toLowerCase();
+        if(text.indexOf('erreur') !== -1){
+          statusNode.style.color = '#fecaca';
+        } else {
+          statusNode.style.color = '';
+        }
+      });
+      observer.observe(statusNode, { childList: true, characterData: true, subtree: true });
+    }catch(e){ console.warn('csv error styling skipped', e); }
+  })();
+  </script>
+
+  <script>
+  (function(){
+    try{
+      var selectors = [
+        ['#type', '[name="type"]'],
+        ['#category', '[name="category"]', '#categorie'],
+        ['#cause', '#cause5m', '[name="cause"]'],
+        ['#duration', '#duree', 'input[name*="duree" i]', 'input[name*="duration" i]']
+      ];
+
+      function getFirstExisting(group){
+        for(var i=0;i<group.length;i++){
+          var found = document.querySelector(group[i]);
+          if(found) return found;
+        }
+        return null;
+      }
+
+      function hasMissing(){
+        for(var i=0;i<selectors.length;i++){
+          var element = getFirstExisting(selectors[i]);
+          if(!element) continue;
+          var value = ('value' in element) ? element.value : element.textContent;
+          if(!value || String(value).trim() === ''){
+            return true;
+          }
+        }
+        return false;
+      }
+
+      function restore(node){
+        if(node && node.dataset.uxOriginalText){
+          node.textContent = node.dataset.uxOriginalText;
+          node.style.color = node.dataset.uxOriginalColor || '';
+          delete node.dataset.uxOriginalText;
+          delete node.dataset.uxOriginalColor;
+        }
+      }
+
+      function apply(){
+        var card = document.getElementById('tile-validation-globale');
+        if(!card) return;
+        var status = card.querySelector('#vg-status');
+        var message = card.querySelector('#vg-msg');
+        if(!status) return;
+
+        if(hasMissing()){
+          if(!status.dataset.uxOriginalText){
+            status.dataset.uxOriginalText = status.textContent;
+            status.dataset.uxOriginalColor = status.style.color || '';
+          }
+          if(message && !message.dataset.uxOriginalText){
+            message.dataset.uxOriginalText = message.textContent;
+            message.dataset.uxOriginalColor = message.style.color || '';
+          }
+          status.textContent = 'À compléter';
+          status.style.color = '#f59e0b';
+          if(message){
+            message.textContent = 'Compléter les champs requis';
+            message.style.color = message.dataset.uxOriginalColor || '';
+          }
+        } else {
+          restore(status);
+          if(message){
+            restore(message);
+          }
+        }
+      }
+
+      var bound = new WeakSet();
+
+      function bind(){
+        selectors.forEach(function(group){
+          group.forEach(function(sel){
+            document.querySelectorAll(sel).forEach(function(el){
+              if(bound.has(el)) return;
+              bound.add(el);
+              ['input','change'].forEach(function(evt){
+                el.addEventListener(evt, function(){ setTimeout(apply, 20); });
+              });
+            });
+          });
+        });
+      }
+
+      bind();
+      apply();
+      window.addEventListener('config:updated', function(){ setTimeout(function(){ bind(); apply(); }, 30); });
+      var refreshTimer = setInterval(function(){ bind(); apply(); }, 2000);
+      window.addEventListener('beforeunload', function(){ clearInterval(refreshTimer); });
+    }catch(e){ console.warn('validation yellow skipped', e); }
+  })();
+  </script>
+
+  <script>
+  (function(){
+    try{
       document.querySelectorAll('label').forEach(function(label){
         if(!label.hasAttribute('for')){
           var control = label.querySelector('input, select, textarea');
