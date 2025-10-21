@@ -1171,6 +1171,7 @@
                             <label>
                                 Durée (min)
                                 <input id="duration" name="duration" type="number" min="1" step="1" required>
+                                <small id="hint-duree" style="opacity:.6;display:block;margin-top:4px;">en minutes</small>
                             </label>
                             <div id="dynamicFields" class="form-grid" style="grid-column: 1/-1; padding-top:0"></div>
                         </div>
@@ -1180,7 +1181,7 @@
                         </label>
                         <div style="margin-top:1.5rem; display:flex; gap:1rem; flex-wrap:wrap">
                             <button id="submitBtn" type="submit">Ajouter</button>
-                            <button id="undoLastBtn" class="secondary" type="button">Annule dernière saisie</button>
+                            <button id="undoLastBtn" class="secondary" type="button">Annuler la dernière saisie</button>
                         </div>
                     </form>
                 </div>
@@ -4703,5 +4704,65 @@
   }
 })();
 </script>
+
+  <script>
+  (function(){
+    try{
+      var selects = document.querySelectorAll('select');
+      selects.forEach(function(sel){
+        function ensurePlaceholder(){
+          var options = Array.from(sel.options || []);
+          var existing = options.find(function(opt){ return opt.getAttribute && opt.getAttribute('data-placeholder') === 'empty'; });
+          var hasValues = options.some(function(opt){ return opt.value && opt.value.trim() !== ''; });
+          if(!hasValues){
+            if(!existing){
+              var opt = document.createElement('option');
+              opt.disabled = true;
+              opt.selected = sel.selectedIndex === -1;
+              opt.textContent = 'Aucune option';
+              opt.style.opacity = '.6';
+              opt.setAttribute('data-placeholder','empty');
+              sel.appendChild(opt);
+            }
+          } else if(existing){
+            if(existing.selected){
+              sel.selectedIndex = 0;
+            }
+            sel.removeChild(existing);
+          }
+        }
+        ensurePlaceholder();
+        sel.addEventListener('change', ensurePlaceholder);
+        try {
+          var observer = new MutationObserver(function(){ ensurePlaceholder(); });
+          observer.observe(sel, { childList: true });
+        } catch(obsErr) {
+          sel.addEventListener('DOMSubtreeModified', ensurePlaceholder);
+        }
+      });
+    }catch(e){ console.warn('placeholder options skipped', e); }
+  })();
+  </script>
+
+  <script>
+  (function(){
+    try{
+      document.querySelectorAll('label').forEach(function(label){
+        if(!label.hasAttribute('for')){
+          var control = label.querySelector('input, select, textarea');
+          if(!control){
+            var sibling = label.nextElementSibling;
+            if(sibling && /^(INPUT|SELECT|TEXTAREA)$/.test(sibling.tagName)){
+              control = sibling;
+            }
+          }
+          if(control && control.id){
+            label.setAttribute('for', control.id);
+          }
+        }
+      });
+    }catch(e){ console.warn('label for check skipped', e); }
+  })();
+  </script>
 </body>
 </html>
