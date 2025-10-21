@@ -5314,6 +5314,91 @@
 
   <script>
   (function(){
+    try {
+      function toMinutes(hhmm){ var m = /^(\d{2}):(\d{2})$/.exec(hhmm || ''); return m ? (+m[1]) * 60 + (+m[2]) : NaN; }
+
+      function formatLabel(team){
+        var start = (team && typeof team.start === 'string') ? team.start : '';
+        var end = (team && typeof team.end === 'string') ? team.end : '';
+        var startFmt = /^(\d{2}):(\d{2})$/.test(start) ? start.replace(':', 'h') : '--:--';
+        var endFmt = /^(\d{2}):(\d{2})$/.test(end) ? end.replace(':', 'h') : '--:--';
+        return (team && team.name ? team.name : 'Équipe') + ' (' + startFmt + ' - ' + endFmt + ')';
+      }
+
+      function ensurePlaceholderOption(select){
+        var placeholder = select.querySelector('option[value=""]');
+        if(placeholder) return placeholder;
+        placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = 'Toutes équipes';
+        select.appendChild(placeholder);
+        return placeholder;
+      }
+
+      function fillTeamSelect(select, teams){
+        if(!select) return;
+        var placeholder = ensurePlaceholderOption(select);
+        var current = select.value;
+        select.innerHTML = '';
+        select.appendChild(placeholder);
+        (teams || []).slice().sort(function(a, b){
+          return (toMinutes(a && a.start) || 0) - (toMinutes(b && b.start) || 0);
+        }).forEach(function(team){
+          if(!team || !team.name) return;
+          var option = document.createElement('option');
+          option.value = team.code || team.name;
+          option.textContent = formatLabel(team);
+          select.appendChild(option);
+        });
+        if(current && select.querySelector('option[value="' + current + '"]')){
+          select.value = current;
+        }
+      }
+
+      function loadTeams(){
+        try {
+          var raw = localStorage.getItem('prodtrack_teams');
+          if(!raw) return [];
+          var parsed = JSON.parse(raw);
+          return Array.isArray(parsed) ? parsed : [];
+        } catch (err) {
+          console.warn('team select sync parse failed:', err);
+          return [];
+        }
+      }
+
+      function hydrateTeams(){
+        var teams = loadTeams();
+        var select = document.getElementById('filtre-equipe') || document.querySelector('[data-team-select]');
+        if(select) fillTeamSelect(select, teams);
+      }
+
+      hydrateTeams();
+
+      document.addEventListener('visibilitychange', function(){
+        if(!document.hidden) hydrateTeams();
+      });
+
+      window.addEventListener('prodtrack:teams-updated', function(evt){
+        var detailTeams = evt && evt.detail && Array.isArray(evt.detail.teams) ? evt.detail.teams : null;
+        fillTeamSelect(document.getElementById('filtre-equipe') || document.querySelector('[data-team-select]'), detailTeams || loadTeams());
+      });
+
+      var saveAllBtn = document.getElementById('cfg-save-all');
+      if(saveAllBtn && !saveAllBtn.__teamSyncAttached){
+        saveAllBtn.__teamSyncAttached = true;
+        saveAllBtn.addEventListener('click', function(){
+          setTimeout(hydrateTeams, 50);
+        });
+      }
+    } catch (e) {
+      console.warn('team select sync skipped', e);
+    }
+  })();
+  </script>
+
+  <script>
+  (function(){
     try{
       document.querySelectorAll('label').forEach(function(label){
         if(!label.hasAttribute('for')){
