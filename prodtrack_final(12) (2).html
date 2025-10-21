@@ -1250,6 +1250,42 @@
     </section>
 
     <section id="page-params" role="region" aria-label="Paramétrage" style="display:none; padding:16px;">
+      <section id="cfg-teams" class="card" style="padding:16px;border-radius:16px;max-width:980px;margin:16px 0;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <h3 style="margin:0;">Noms d’équipes</h3>
+          <button id="tm-add" type="button" style="margin-left:auto;">+ Ajouter</button>
+        </div>
+        <div style="opacity:.7;margin:6px 0 12px;">Personnalisez les libellés utilisés dans les filtres et tableaux.</div>
+        <div id="tm-list" style="display:flex;flex-direction:column;gap:14px;"></div>
+        <div id="tm-msg" style="opacity:.75;margin-top:8px;"></div>
+      </section>
+      <template id="tm-item-tpl">
+        <div class="tm-item" style="border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:12px;">
+          <div style="display:grid;grid-template-columns:1fr 140px 140px 140px auto;gap:12px;align-items:center;">
+            <div>
+              <label>Nom affiché</label>
+              <input class="tm-name" type="text" placeholder="Équipe A">
+            </div>
+            <div>
+              <label>Code</label>
+              <input class="tm-code" type="text" placeholder="A">
+            </div>
+            <div>
+              <label>Début</label>
+              <input class="tm-start" type="time">
+            </div>
+            <div>
+              <label>Fin</label>
+              <input class="tm-end" type="time">
+            </div>
+            <div style="display:flex;gap:6px;justify-content:flex-end;">
+              <button class="tm-up" type="button" title="Monter">↑</button>
+              <button class="tm-down" type="button" title="Descendre">↓</button>
+              <button class="tm-del" type="button" style="background:#fecaca;color:#7f1d1d;">Supprimer</button>
+            </div>
+          </div>
+        </div>
+      </template>
       <section id="cfg-profiles" class="card" style="padding:16px;border-radius:16px;max-width:980px;margin-bottom:16px;">
         <div style="display:flex;align-items:center;gap:8px;">
           <h3 style="margin:0;">Profils OEE & Cadence</h3>
@@ -3207,6 +3243,324 @@
 
   }catch(err){
     console.warn('Nav SPA init skipped:', err);
+  }
+})();
+</script>
+<script>
+(function(){
+  try{
+    var $ = function(sel, scope){ return (scope || document).querySelector(sel); };
+    var qa = function(sel, scope){ return Array.from((scope || document).querySelectorAll(sel)); };
+    var box = document.getElementById('cfg-teams');
+    if(!box) return;
+
+    var list = document.getElementById('tm-list');
+    var tpl = document.getElementById('tm-item-tpl');
+    var addBtn = document.getElementById('tm-add');
+    var msg = document.getElementById('tm-msg');
+    if(!list || !tpl) return;
+
+    var STORAGE_KEY = 'prodtrack_teams';
+
+    function ensureId(base, used){
+      var raw = base == null ? '' : String(base);
+      raw = raw.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+      if(!raw) raw = 'team';
+      var candidate = raw;
+      var index = 2;
+      while(used.has(candidate)){
+        candidate = raw + '-' + index;
+        index += 1;
+      }
+      used.add(candidate);
+      return candidate;
+    }
+
+    function normalizeTime(value){
+      if(typeof value !== 'string') return '';
+      var trimmed = value.trim();
+      if(!/^\d{2}:\d{2}$/.test(trimmed)) return '';
+      var parts = trimmed.split(':');
+      var hours = parseInt(parts[0], 10);
+      var minutes = parseInt(parts[1], 10);
+      if(hours > 23 || minutes > 59) return '';
+      return String(hours).padStart(2, '0') + ':' + String(minutes).padStart(2, '0');
+    }
+
+    function sanitizeTeams(items){
+      var used = new Set();
+      return (items || []).map(function(entry){
+        entry = entry || {};
+        var name = typeof entry.name === 'string' ? entry.name.trim() : '';
+        var code = typeof entry.code === 'string' ? entry.code.trim() : '';
+        var start = normalizeTime(entry.start);
+        var end = normalizeTime(entry.end);
+        var idSource = entry.id != null ? entry.id : (code || name);
+        var id = ensureId(idSource, used);
+        return { id: id, name: name, code: code, start: start, end: end };
+      });
+    }
+
+    function loadTeams(){
+      try{
+        var raw = localStorage.getItem(STORAGE_KEY);
+        if(!raw) return [];
+        var parsed = JSON.parse(raw);
+        if(Array.isArray(parsed)){
+          return sanitizeTeams(parsed);
+        }
+      }catch(err){
+        console.warn('cfg-teams load failed:', err);
+      }
+      return [];
+    }
+
+    function saveTeams(arr){
+      try{
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(arr));
+      }catch(err){
+        console.warn('cfg-teams save failed:', err);
+      }
+    }
+
+    function renderTeams(arr){
+      list.innerHTML = '';
+      (arr || []).forEach(function(team){
+        var fragment = document.importNode(tpl.content, true);
+        var card = fragment.querySelector('.tm-item');
+        if(!card) return;
+        card.dataset.teamId = team.id || '';
+        var nameInput = card.querySelector('.tm-name');
+        if(nameInput) nameInput.value = team.name || '';
+        var codeInput = card.querySelector('.tm-code');
+        if(codeInput) codeInput.value = team.code || '';
+        var startInput = card.querySelector('.tm-start');
+        if(startInput) startInput.value = team.start || '';
+        var endInput = card.querySelector('.tm-end');
+        if(endInput) endInput.value = team.end || '';
+        list.appendChild(fragment);
+      });
+    }
+
+    function collectTeamsFromUI(){
+      var cards = qa('.tm-item', list);
+      var raw = cards.map(function(card){
+        var val = function(sel){
+          var el = card.querySelector(sel);
+          return el ? el.value : '';
+        };
+        return {
+          id: card.dataset.teamId,
+          name: (val('.tm-name') || '').trim(),
+          code: (val('.tm-code') || '').trim(),
+          start: val('.tm-start'),
+          end: val('.tm-end')
+        };
+      });
+      var sanitized = sanitizeTeams(raw);
+      sanitized.forEach(function(team, index){
+        var card = cards[index];
+        if(card){
+          card.dataset.teamId = team.id;
+        }
+      });
+      return sanitized;
+    }
+
+    function toMinutes(time){
+      if(!/^\d{2}:\d{2}$/.test(time || '')) return NaN;
+      var parts = time.split(':');
+      return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+    }
+
+    function computeSpan(start, end){
+      var a = toMinutes(start);
+      var b = toMinutes(end);
+      if(isNaN(a) || isNaN(b)) return null;
+      if(b <= a) b += 1440;
+      return { a: a, b: b };
+    }
+
+    function spansOverlap(s1, s2){
+      if(!s1 || !s2) return false;
+      var combos1 = [s1, { a: s1.a + 1440, b: s1.b + 1440 }];
+      var combos2 = [s2, { a: s2.a + 1440, b: s2.b + 1440 }];
+      for(var i=0;i<combos1.length;i++){
+        for(var j=0;j<combos2.length;j++){
+          var left = Math.max(combos1[i].a, combos2[j].a);
+          var right = Math.min(combos1[i].b, combos2[j].b);
+          if(left < right) return true;
+        }
+      }
+      return false;
+    }
+
+    function validateTeams(data){
+      var arr = Array.isArray(data) ? data : [];
+      var errors = [];
+      var warnings = [];
+      var codeSet = new Set();
+      arr.forEach(function(team, index){
+        var row = index + 1;
+        if(!team.name) errors.push('Nom manquant ligne ' + row);
+        if(!team.code) errors.push('Code manquant ligne ' + row);
+        var codeKey = team.code ? team.code.toLowerCase() : '';
+        if(codeKey){
+          if(codeSet.has(codeKey)){
+            errors.push('Code en double ligne ' + row);
+          } else {
+            codeSet.add(codeKey);
+          }
+        }
+        if(!/^\d{2}:\d{2}$/.test(team.start || '')) errors.push('Début invalide ligne ' + row);
+        if(!/^\d{2}:\d{2}$/.test(team.end || '')) errors.push('Fin invalide ligne ' + row);
+      });
+
+      for(var i=0;i<arr.length;i++){
+        for(var j=i+1;j<arr.length;j++){
+          var span1 = computeSpan(arr[i].start, arr[i].end);
+          var span2 = computeSpan(arr[j].start, arr[j].end);
+          if(span1 && span2 && spansOverlap(span1, span2)){
+            var nameA = arr[i].name || arr[i].code || ('Équipe ' + (i+1));
+            var nameB = arr[j].name || arr[j].code || ('Équipe ' + (j+1));
+            warnings.push('Chevauchement entre "' + nameA + '" et "' + nameB + '"');
+          }
+        }
+      }
+
+      return { errors: errors, warnings: warnings };
+    }
+
+    function updateMessageState(data){
+      if(!msg) return;
+      var arr = Array.isArray(data) ? data : [];
+      var check = validateTeams(arr);
+      if(check.errors.length){
+        msg.textContent = 'À corriger: ' + check.errors.join(' · ');
+      } else if(check.warnings.length){
+        msg.textContent = 'Chevauchement: ' + check.warnings.join(' · ');
+      } else if(arr.length){
+        msg.textContent = 'OK';
+      } else {
+        msg.textContent = 'Aucune équipe configurée';
+      }
+    }
+
+    function propagate(data){
+      var selects = document.querySelectorAll('#filtre-equipe, [data-team-select]');
+      if(!selects.length) return;
+      selects.forEach(function(sel){
+        var previous = sel.value;
+        if(sel.dataset.teamPlaceholderText == null){
+          var placeholderNode = sel.querySelector('option[value=""]') || sel.querySelector('option');
+          sel.dataset.teamPlaceholderText = placeholderNode ? placeholderNode.textContent : 'Sélectionner';
+        }
+        var placeholderText = sel.dataset.teamPlaceholderText || 'Sélectionner';
+        sel.innerHTML = '';
+        var placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = placeholderText;
+        sel.appendChild(placeholder);
+        (data || []).forEach(function(team){
+          if(!team || !team.name) return;
+          var value = team.code || team.id;
+          if(!value) return;
+          var opt = document.createElement('option');
+          opt.value = value;
+          opt.textContent = team.name;
+          sel.appendChild(opt);
+        });
+        if(previous && sel.querySelector('option[value="' + previous + '"]')){
+          sel.value = previous;
+        }
+      });
+    }
+
+    function persist(){
+      var data = collectTeamsFromUI();
+      saveTeams(data);
+      propagate(data);
+      updateMessageState(data);
+    }
+
+    var initial = loadTeams();
+    if(!initial.length){
+      initial = sanitizeTeams([
+        { id: 'team-a', name: 'Équipe A', code: 'A', start: '06:00', end: '14:00' },
+        { id: 'team-b', name: 'Équipe B', code: 'B', start: '14:00', end: '22:00' },
+        { id: 'team-c', name: 'Équipe C', code: 'C', start: '22:00', end: '06:00' }
+      ]);
+      saveTeams(initial);
+    }
+
+    renderTeams(initial);
+    saveTeams(initial);
+    propagate(initial);
+    updateMessageState(initial);
+
+    list.addEventListener('input', function(evt){
+      if(evt && evt.target && evt.target.matches('input')){
+        persist();
+      }
+    });
+
+    list.addEventListener('change', function(evt){
+      if(evt && evt.target && evt.target.matches('input')){
+        persist();
+      }
+    });
+
+    list.addEventListener('click', function(evt){
+      var target = evt && evt.target;
+      if(!target) return;
+      if(target.classList.contains('tm-del')){
+        var cardDel = target.closest('.tm-item');
+        if(cardDel){
+          cardDel.remove();
+          persist();
+        }
+      } else if(target.classList.contains('tm-up')){
+        var cardUp = target.closest('.tm-item');
+        if(cardUp){
+          var prev = cardUp.previousElementSibling;
+          if(prev){
+            list.insertBefore(cardUp, prev);
+            persist();
+          }
+        }
+      } else if(target.classList.contains('tm-down')){
+        var cardDown = target.closest('.tm-item');
+        if(cardDown){
+          var next = cardDown.nextElementSibling;
+          if(next){
+            list.insertBefore(cardDown, next.nextElementSibling);
+          } else {
+            list.appendChild(cardDown);
+          }
+          persist();
+        }
+      }
+    });
+
+    if(addBtn){
+      addBtn.addEventListener('click', function(){
+        var fragment = document.importNode(tpl.content, true);
+        var card = fragment.querySelector('.tm-item');
+        if(card){
+          var used = new Set(qa('.tm-item', list).map(function(item){ return item.dataset.teamId || ''; }).filter(Boolean));
+          card.dataset.teamId = ensureId('team', used);
+        }
+        list.appendChild(fragment);
+        persist();
+        if(card){
+          var focusInput = card.querySelector('.tm-name');
+          if(focusInput && typeof focusInput.focus === 'function'){ focusInput.focus(); }
+        }
+      });
+    }
+
+  }catch(err){
+    console.warn('cfg-teams init skipped:', err);
   }
 })();
 </script>
