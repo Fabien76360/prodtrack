@@ -1382,6 +1382,9 @@
         </div>
         <small style="opacity:.7;">Colonnes supportées : type, categorie, cause5m, detail, equipement, article, zone</small>
       </section>
+      <div id="cfg-save-all-wrap" style="margin:12px 0;display:flex;justify-content:flex-end;">
+        <button id="cfg-save-all" type="button">Sauvegarder tout</button>
+      </div>
       <h2>Paramétrage</h2>
       <p style="opacity:.7;">Page en construction.</p>
       <button id="btn-back-from-params" type="button">Retour</button>
@@ -4937,6 +4940,375 @@
       var refreshTimer = setInterval(function(){ bind(); apply(); }, 2000);
       window.addEventListener('beforeunload', function(){ clearInterval(refreshTimer); });
     }catch(e){ console.warn('validation yellow skipped', e); }
+  })();
+  </script>
+
+  <script>
+  (function(){
+    try{
+      var saveAllBtn = document.getElementById('cfg-save-all');
+      if(!saveAllBtn) return;
+
+      function ensureToastHost(){
+        var host = document.getElementById('ux-toast');
+        if(host) return host;
+        host = document.createElement('div');
+        host.id = 'ux-toast';
+        host.setAttribute('aria-live', 'polite');
+        host.style.cssText = 'position:fixed;right:16px;bottom:16px;z-index:9999;display:flex;flex-direction:column;gap:8px;pointer-events:none';
+        document.body.appendChild(host);
+        return host;
+      }
+
+      function showToast(message){
+        if(typeof window._uxToast === 'function'){
+          window._uxToast(message, 'rgba(16,185,129,.18)');
+          return;
+        }
+        var host = ensureToastHost();
+        var box = document.createElement('div');
+        box.textContent = message;
+        box.style.cssText = 'pointer-events:auto;min-width:160px;max-width:360px;padding:10px 12px;border-radius:10px;font-weight:600;opacity:.98;background:rgba(16,185,129,.18);border:1px solid rgba(16,185,129,.4);color:#fff';
+        host.appendChild(box);
+        setTimeout(function(){ if(box.parentNode){ box.parentNode.removeChild(box); } }, 2000);
+      }
+
+      function looksLikePath(value){
+        if(!value) return false;
+        var s = String(value).trim();
+        return /^https?:\/\//i.test(s) || /[\\\/]/.test(s);
+      }
+
+      function makeSlug(base, fallback){
+        var raw = base == null ? '' : String(base);
+        raw = raw.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+        if(!raw) raw = fallback;
+        return raw;
+      }
+
+      function ensureUniqueSlug(base, used, fallback){
+        var slug = makeSlug(base, fallback);
+        var candidate = slug;
+        var index = 2;
+        while(used.has(candidate)){
+          candidate = slug + '-' + index;
+          index += 1;
+        }
+        used.add(candidate);
+        return candidate;
+      }
+
+      function clampNumber(value, min, max){
+        if(value == null || value === '') return null;
+        var num = parseFloat(String(value).replace(',', '.'));
+        if(!isFinite(num)) return null;
+        if(typeof min === 'number' && num < min) num = min;
+        if(typeof max === 'number' && num > max) num = max;
+        return num;
+      }
+
+      function normalizeTime(value){
+        if(typeof value !== 'string') return '';
+        var trimmed = value.trim();
+        if(!/^\d{2}:\d{2}$/.test(trimmed)) return '';
+        var parts = trimmed.split(':');
+        var hours = parseInt(parts[0], 10);
+        var minutes = parseInt(parts[1], 10);
+        if(hours > 23 || minutes > 59) return '';
+        return String(hours).padStart(2, '0') + ':' + String(minutes).padStart(2, '0');
+      }
+
+      function sanitizeProfiles(items){
+        var used = new Set();
+        return (items || []).map(function(entry){
+          entry = entry || {};
+          var name = typeof entry.name === 'string' ? entry.name.trim() : '';
+          var idSource = entry.id != null ? entry.id : name;
+          var id = ensureUniqueSlug(idSource, used, 'profil');
+          return {
+            id: id,
+            name: name,
+            cadence: clampNumber(entry.cadence, 0, null),
+            qual: clampNumber(entry.qual, 0, 100),
+            disp: clampNumber(entry.disp, 0, 100),
+            oee: clampNumber(entry.oee, 0, 100)
+          };
+        });
+      }
+
+      function sanitizeTeams(items){
+        var used = new Set();
+        return (items || []).map(function(entry){
+          entry = entry || {};
+          var name = typeof entry.name === 'string' ? entry.name.trim() : '';
+          var code = typeof entry.code === 'string' ? entry.code.trim() : '';
+          var start = normalizeTime(entry.start);
+          var end = normalizeTime(entry.end);
+          var idSource = entry.id != null ? entry.id : (code || name);
+          var id = ensureUniqueSlug(idSource, used, 'team');
+          return { id: id, name: name, code: code, start: start, end: end };
+        });
+      }
+
+      function collectProfiles(){
+        var list = document.getElementById('pf-list');
+        if(!list) return [];
+        var cards = list.querySelectorAll('.pf-item');
+        var raw = Array.from(cards).map(function(card){
+          return {
+            id: card ? card.dataset.id : '',
+            name: card && card.querySelector('.pf-name') ? card.querySelector('.pf-name').value : '',
+            cadence: card && card.querySelector('.pf-cad') ? card.querySelector('.pf-cad').value : '',
+            qual: card && card.querySelector('.pf-qual') ? card.querySelector('.pf-qual').value : '',
+            disp: card && card.querySelector('.pf-disp') ? card.querySelector('.pf-disp').value : '',
+            oee: card && card.querySelector('.pf-oee') ? card.querySelector('.pf-oee').value : ''
+          };
+        });
+        var sanitized = sanitizeProfiles(raw);
+        sanitized.forEach(function(profile, index){
+          var card = cards[index];
+          if(card){
+            card.dataset.id = profile.id;
+          }
+        });
+        return sanitized;
+      }
+
+      function collectTeams(){
+        var list = document.getElementById('tm-list');
+        if(!list) return [];
+        var cards = list.querySelectorAll('.tm-item');
+        var raw = Array.from(cards).map(function(card){
+          return {
+            id: card ? card.dataset.teamId : '',
+            name: card && card.querySelector('.tm-name') ? card.querySelector('.tm-name').value : '',
+            code: card && card.querySelector('.tm-code') ? card.querySelector('.tm-code').value : '',
+            start: card && card.querySelector('.tm-start') ? card.querySelector('.tm-start').value : '',
+            end: card && card.querySelector('.tm-end') ? card.querySelector('.tm-end').value : ''
+          };
+        });
+        var sanitized = sanitizeTeams(raw);
+        sanitized.forEach(function(team, index){
+          var card = cards[index];
+          if(card){
+            card.dataset.teamId = team.id;
+          }
+        });
+        return sanitized;
+      }
+
+      function toMinutes(time){
+        if(!/^\d{2}:\d{2}$/.test(time || '')) return NaN;
+        var parts = time.split(':');
+        return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+      }
+
+      function computeSpan(start, end){
+        var a = toMinutes(start);
+        var b = toMinutes(end);
+        if(isNaN(a) || isNaN(b)) return null;
+        if(b <= a) b += 1440;
+        return { a: a, b: b };
+      }
+
+      function spansOverlap(s1, s2){
+        if(!s1 || !s2) return false;
+        var combos1 = [s1, { a: s1.a + 1440, b: s1.b + 1440 }];
+        var combos2 = [s2, { a: s2.a + 1440, b: s2.b + 1440 }];
+        for(var i=0;i<combos1.length;i++){
+          for(var j=0;j<combos2.length;j++){
+            var left = Math.max(combos1[i].a, combos2[j].a);
+            var right = Math.min(combos1[i].b, combos2[j].b);
+            if(left < right) return true;
+          }
+        }
+        return false;
+      }
+
+      function validateTeams(data){
+        var arr = Array.isArray(data) ? data : [];
+        var errors = [];
+        var warnings = [];
+        var codeSet = new Set();
+        arr.forEach(function(team, index){
+          var row = index + 1;
+          if(!team.name) errors.push('Nom manquant ligne ' + row);
+          if(!team.code) errors.push('Code manquant ligne ' + row);
+          var codeKey = team.code ? team.code.toLowerCase() : '';
+          if(codeKey){
+            if(codeSet.has(codeKey)){
+              errors.push('Code en double ligne ' + row);
+            } else {
+              codeSet.add(codeKey);
+            }
+          }
+          if(!/^\d{2}:\d{2}$/.test(team.start || '')) errors.push('Début invalide ligne ' + row);
+          if(!/^\d{2}:\d{2}$/.test(team.end || '')) errors.push('Fin invalide ligne ' + row);
+        });
+        for(var i=0;i<arr.length;i++){
+          for(var j=i+1;j<arr.length;j++){
+            var span1 = computeSpan(arr[i].start, arr[i].end);
+            var span2 = computeSpan(arr[j].start, arr[j].end);
+            if(span1 && span2 && spansOverlap(span1, span2)){
+              var nameA = arr[i].name || arr[i].code || ('Équipe ' + (i+1));
+              var nameB = arr[j].name || arr[j].code || ('Équipe ' + (j+1));
+              warnings.push('Chevauchement entre "' + nameA + '" et "' + nameB + '"');
+            }
+          }
+        }
+        return { errors: errors, warnings: warnings };
+      }
+
+      function updateTeamMessage(data){
+        var msgNode = document.getElementById('tm-msg');
+        if(!msgNode) return;
+        var result = validateTeams(data);
+        if(result.errors.length){
+          msgNode.textContent = 'À corriger: ' + result.errors.join(' · ');
+        } else if(result.warnings.length){
+          msgNode.textContent = 'Chevauchement: ' + result.warnings.join(' · ');
+        } else if((data || []).length){
+          msgNode.textContent = 'OK';
+        } else {
+          msgNode.textContent = 'Aucune équipe configurée';
+        }
+      }
+
+      function syncProfileSelect(profiles){
+        var sel = document.getElementById('profil-actif');
+        if(!sel) return;
+        var previous = sel.value;
+        var placeholder = sel.querySelector('option[value=""]');
+        var placeholderText = placeholder ? placeholder.textContent : 'Sélectionner un profil';
+        sel.innerHTML = '';
+        if(!placeholder){
+          placeholder = document.createElement('option');
+          placeholder.value = '';
+        }
+        placeholder.textContent = placeholderText;
+        sel.appendChild(placeholder);
+        (profiles || []).forEach(function(profile){
+          if(!profile || !profile.name) return;
+          var opt = document.createElement('option');
+          opt.value = profile.id || profile.name;
+          opt.textContent = profile.name;
+          opt.dataset.profileOption = '1';
+          sel.appendChild(opt);
+        });
+        if(previous && sel.querySelector('option[value="' + previous + '"]')){
+          sel.value = previous;
+        }
+      }
+
+      function syncTeamSelects(teams){
+        var selects = document.querySelectorAll('#filtre-equipe, [data-team-select]');
+        if(!selects.length) return;
+        selects.forEach(function(sel){
+          var previous = sel.value;
+          if(sel.dataset.teamPlaceholderText == null){
+            var placeholderNode = sel.querySelector('option[value=""]') || sel.querySelector('option');
+            sel.dataset.teamPlaceholderText = placeholderNode ? placeholderNode.textContent : 'Sélectionner';
+          }
+          var placeholderText = sel.dataset.teamPlaceholderText || 'Sélectionner';
+          sel.innerHTML = '';
+          var placeholder = document.createElement('option');
+          placeholder.value = '';
+          placeholder.textContent = placeholderText;
+          sel.appendChild(placeholder);
+          (teams || []).forEach(function(team){
+            if(!team || !team.name) return;
+            var value = team.code || team.id;
+            if(!value) return;
+            var opt = document.createElement('option');
+            opt.value = value;
+            opt.textContent = team.name;
+            sel.appendChild(opt);
+          });
+          if(previous && sel.querySelector('option[value="' + previous + '"]')){
+            sel.value = previous;
+          }
+        });
+      }
+
+      saveAllBtn.addEventListener('click', function(){
+        try{
+          var overallOk = true;
+
+          (function saveLineSection(){
+            var lineInput = document.getElementById('cfg-line');
+            var pathReportInput = document.getElementById('cfg-path-report');
+            var pathLiveInput = document.getElementById('cfg-path-live');
+            var msgNode = document.getElementById('cfg-msg');
+            if(!lineInput && !pathReportInput && !pathLiveInput) return;
+            var data = {
+              line: lineInput && lineInput.value ? lineInput.value.trim() : '',
+              path_report: pathReportInput && pathReportInput.value ? pathReportInput.value.trim() : '',
+              path_live: pathLiveInput && pathLiveInput.value ? pathLiveInput.value.trim() : ''
+            };
+            var issues = [];
+            if(!data.line) issues.push('ligne');
+            if(data.path_report && !looksLikePath(data.path_report)) issues.push('lien rapport');
+            if(data.path_live && !looksLikePath(data.path_live)) issues.push('lien fichier en cours');
+            if(issues.length){
+              overallOk = false;
+              if(msgNode) msgNode.textContent = 'Vérifier: ' + issues.join(', ');
+              return;
+            }
+            try{
+              localStorage.setItem('prodtrack_cfg', JSON.stringify(data));
+              if(msgNode) msgNode.textContent = 'Enregistré';
+            }catch(storeErr){
+              overallOk = false;
+              if(msgNode) msgNode.textContent = 'Erreur stockage';
+            }
+          })();
+
+          (function saveProfilesSection(){
+            var list = document.getElementById('pf-list');
+            if(!list) return;
+            var profiles = collectProfiles();
+            try{
+              localStorage.setItem('prodtrack_profiles', JSON.stringify(profiles));
+            }catch(storeErr){
+              overallOk = false;
+              console.warn('cfg-save-all profiles store failed:', storeErr);
+            }
+            syncProfileSelect(profiles);
+          })();
+
+          (function saveTeamsSection(){
+            var list = document.getElementById('tm-list');
+            if(!list) return;
+            var teams = collectTeams();
+            try{
+              localStorage.setItem('prodtrack_teams', JSON.stringify(teams));
+            }catch(storeErr){
+              overallOk = false;
+              console.warn('cfg-save-all teams store failed:', storeErr);
+            }
+            syncTeamSelects(teams);
+            updateTeamMessage(teams);
+            try{
+              window.dispatchEvent(new CustomEvent('prodtrack:teams-updated', { detail: { teams: teams } }));
+            }catch(evtErr){
+              console.warn('cfg-save-all teams dispatch failed:', evtErr);
+            }
+            var validation = validateTeams(teams);
+            if(validation.errors.length){
+              overallOk = false;
+            }
+          })();
+
+          if(overallOk){
+            showToast('Configuration enregistrée');
+          }
+        }catch(err){
+          console.warn('cfg save-all failed:', err);
+        }
+      });
+    }catch(err){
+      console.warn('cfg save-all init skipped:', err);
+    }
   })();
   </script>
 
