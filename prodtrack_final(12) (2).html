@@ -515,6 +515,44 @@
         color: var(--text);
     }
 
+    /* --- Ajustements ergonomiques : espacement et taille --- */
+
+    /* 1️⃣ Réduction hauteur tuiles Synthèse & Validation */
+    #tile-synth-heure.card,
+    #tile-validation-globale.card {
+        padding-top: 12px !important;
+        padding-bottom: 12px !important;
+        min-height: unset !important;
+    }
+
+    /* 2️⃣ Cartes génériques : padding vertical réduit */
+    .card {
+        padding-top: 12px !important;
+        padding-bottom: 12px !important;
+    }
+
+    /* 3️⃣ Boutons navigation (menu latéral + bouton retour) */
+    nav button,
+    #btn-retour,
+    button[data-role="nav"],
+    button[class*="menu" i] {
+        padding-left: 16px !important;
+        padding-right: 16px !important;
+    }
+
+    /* Uniformité visuelle : éviter surépaisseurs */
+    .card h3,
+    .card h2,
+    .card h4 {
+        margin-top: 0.5rem !important;
+        margin-bottom: 0.5rem !important;
+    }
+
+    /* Réduction globale des marges inter-tuiles */
+    .dashboard-grid > .card {
+        margin-bottom: 10px !important;
+    }
+
     .time-slots-grid {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
