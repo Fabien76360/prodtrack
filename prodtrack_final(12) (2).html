@@ -5314,85 +5314,235 @@
 
   <script>
   (function(){
-    try {
-      function toMinutes(hhmm){ var m = /^(\d{2}):(\d{2})$/.exec(hhmm || ''); return m ? (+m[1]) * 60 + (+m[2]) : NaN; }
+    try{
+      function emitParamsChanged(detail){
+        try{
+          window.dispatchEvent(new CustomEvent('params:changed', { detail: detail || { ts: Date.now() } }));
+        } catch (dispatchErr) {
+          console.warn('params:changed dispatch failed:', dispatchErr);
+        }
+      }
 
-      function formatLabel(team){
+      var saveAll = document.getElementById('cfg-save-all');
+      if(saveAll && !saveAll._paramsChangedHook){
+        saveAll._paramsChangedHook = true;
+        saveAll.addEventListener('click', function(){
+          setTimeout(function(){ emitParamsChanged({ source: 'save-all' }); }, 80);
+        });
+      }
+
+      var profilesBox = document.getElementById('cfg-profiles');
+      if(profilesBox && !profilesBox._paramsChangedHook){
+        profilesBox._paramsChangedHook = true;
+        profilesBox.addEventListener('click', function(evt){
+          var target = evt && evt.target;
+          if(target && target.matches('#pf-add, .pf-del, .pf-up, .pf-down')){
+            setTimeout(function(){ emitParamsChanged({ source: 'profiles' }); }, 50);
+          }
+        });
+        profilesBox.addEventListener('change', function(evt){
+          var target = evt && evt.target;
+          if(target && target.matches('#pf-list input, #pf-list input[type="number"]')){
+            setTimeout(function(){ emitParamsChanged({ source: 'profiles' }); }, 50);
+          }
+        });
+        profilesBox.addEventListener('input', function(evt){
+          var target = evt && evt.target;
+          if(target && target.matches('#pf-list input, #pf-list input[type="number"]')){
+            setTimeout(function(){ emitParamsChanged({ source: 'profiles' }); }, 50);
+          }
+        });
+      }
+
+      var teamsBox = document.getElementById('cfg-teams');
+      if(teamsBox && !teamsBox._paramsChangedHook){
+        teamsBox._paramsChangedHook = true;
+        teamsBox.addEventListener('click', function(evt){
+          var target = evt && evt.target;
+          if(target && target.matches('#tm-add, .tm-del, .tm-up, .tm-down')){
+            setTimeout(function(){ emitParamsChanged({ source: 'teams' }); }, 50);
+          }
+        });
+        teamsBox.addEventListener('change', function(evt){
+          var target = evt && evt.target;
+          if(target && target.matches('#tm-list input, #tm-list input[type="time"]')){
+            setTimeout(function(){ emitParamsChanged({ source: 'teams' }); }, 50);
+          }
+        });
+        teamsBox.addEventListener('input', function(evt){
+          var target = evt && evt.target;
+          if(target && target.matches('#tm-list input, #tm-list input[type="time"]')){
+            setTimeout(function(){ emitParamsChanged({ source: 'teams' }); }, 50);
+          }
+        });
+      }
+
+      window.addEventListener('prodtrack:teams-updated', function(event){
+        emitParamsChanged({ source: 'teams-event', data: event && event.detail ? event.detail.teams : undefined });
+      });
+
+      window.addEventListener('prodtrack:events-config', function(event){
+        if(event && event.detail && event.detail.source === 'saisie-sync') return;
+        emitParamsChanged({ source: 'events-csv', data: event && event.detail ? event.detail.model : undefined });
+      });
+    }catch(err){
+      console.warn('params-change emitter skipped', err);
+    }
+  })();
+  </script>
+
+  <script>
+  (function(){
+    try{
+      function $(sel){ return document.querySelector(sel); }
+
+      function toMinutes(value){
+        var match = /^(\d{2}):(\d{2})$/.exec(value || '');
+        return match ? (+match[1]) * 60 + (+match[2]) : NaN;
+      }
+
+      function formatTeamLabel(team){
         var start = (team && typeof team.start === 'string') ? team.start : '';
         var end = (team && typeof team.end === 'string') ? team.end : '';
-        var startFmt = /^(\d{2}):(\d{2})$/.test(start) ? start.replace(':', 'h') : '--:--';
-        var endFmt = /^(\d{2}):(\d{2})$/.test(end) ? end.replace(':', 'h') : '--:--';
-        return (team && team.name ? team.name : 'Équipe') + ' (' + startFmt + ' - ' + endFmt + ')';
+        var format = function(time){
+          return /^(\d{2}):(\d{2})$/.test(time || '') ? time.replace(':', 'h') : '--:--';
+        };
+        return (team && team.name ? team.name : 'Équipe') + ' (' + format(start) + ' - ' + format(end) + ')';
       }
 
-      function ensurePlaceholderOption(select){
-        var placeholder = select.querySelector('option[value=""]');
-        if(placeholder) return placeholder;
-        placeholder = document.createElement('option');
-        placeholder.value = '';
-        placeholder.textContent = 'Toutes équipes';
-        select.appendChild(placeholder);
-        return placeholder;
-      }
-
-      function fillTeamSelect(select, teams){
-        if(!select) return;
-        var placeholder = ensurePlaceholderOption(select);
-        var current = select.value;
-        select.innerHTML = '';
-        select.appendChild(placeholder);
-        (teams || []).slice().sort(function(a, b){
-          return (toMinutes(a && a.start) || 0) - (toMinutes(b && b.start) || 0);
-        }).forEach(function(team){
-          if(!team || !team.name) return;
-          var option = document.createElement('option');
-          option.value = team.code || team.name;
-          option.textContent = formatLabel(team);
-          select.appendChild(option);
-        });
-        if(current && select.querySelector('option[value="' + current + '"]')){
-          select.value = current;
-        }
-      }
-
-      function loadTeams(){
+      function loadJSON(key, fallback){
         try {
-          var raw = localStorage.getItem('prodtrack_teams');
-          if(!raw) return [];
+          var raw = localStorage.getItem(key);
+          if(raw == null) return fallback;
           var parsed = JSON.parse(raw);
-          return Array.isArray(parsed) ? parsed : [];
+          return parsed == null ? fallback : parsed;
         } catch (err) {
-          console.warn('team select sync parse failed:', err);
-          return [];
+          console.warn(key + ' parse failed:', err);
+          return fallback;
         }
       }
 
-      function hydrateTeams(){
-        var teams = loadTeams();
-        var select = document.getElementById('filtre-equipe') || document.querySelector('[data-team-select]');
-        if(select) fillTeamSelect(select, teams);
+      function sortTeams(data){
+        return (Array.isArray(data) ? data.slice() : []).sort(function(a, b){
+          var sa = toMinutes(a && a.start);
+          var sb = toMinutes(b && b.start);
+          if(isNaN(sa)) sa = 0;
+          if(isNaN(sb)) sb = 0;
+          return sa - sb;
+        });
       }
 
-      hydrateTeams();
+      function refreshTeams(teamsInput){
+        var select = $('#filtre-equipe') || document.querySelector('[data-team-select]');
+        if(!select) return;
+        var teams = Array.isArray(teamsInput) ? teamsInput : loadJSON('prodtrack_teams', []);
+        var previous = select.value;
+        if(!select.dataset.teamPlaceholderText){
+          var placeholderNode = select.querySelector('option[value=""]') || select.querySelector('option');
+          select.dataset.teamPlaceholderText = placeholderNode ? placeholderNode.textContent : 'Toutes équipes';
+        }
+        var placeholderText = select.dataset.teamPlaceholderText || 'Toutes équipes';
+        select.innerHTML = '';
+        var placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = placeholderText;
+        select.appendChild(placeholder);
+        sortTeams(teams).forEach(function(team){
+          if(!team || !team.name) return;
+          var opt = document.createElement('option');
+          opt.value = team.code || team.name;
+          opt.textContent = formatTeamLabel(team);
+          select.appendChild(opt);
+        });
+        if(previous && Array.prototype.some.call(select.options, function(option){ return option.value === previous; })){
+          select.value = previous;
+        } else {
+          select.value = '';
+        }
+      }
+
+      function loadProfiles(){
+        var items = loadJSON('prodtrack_profiles', []);
+        return Array.isArray(items) ? items : [];
+      }
+
+      function refreshProfiles(){
+        var select = $('#profil-actif');
+        if(!select) return;
+        var profiles = loadProfiles();
+        var previous = select.value;
+        var placeholder = select.querySelector('option[value=""]');
+        var placeholderText = placeholder ? placeholder.textContent : 'Sélectionner un profil';
+        select.innerHTML = '';
+        if(!placeholder){
+          placeholder = document.createElement('option');
+          placeholder.value = '';
+        }
+        placeholder.textContent = placeholderText;
+        select.appendChild(placeholder);
+        profiles.forEach(function(profile){
+          if(!profile || !profile.name) return;
+          var opt = document.createElement('option');
+          opt.value = profile.id || profile.name;
+          opt.textContent = profile.name;
+          select.appendChild(opt);
+        });
+        if(previous && Array.prototype.some.call(select.options, function(option){ return option.value === previous; })){
+          select.value = previous;
+        } else {
+          select.value = '';
+        }
+      }
+
+      var lastEventPayload = null;
+
+      function refreshEventsFromStorage(force){
+        var model = loadJSON('prodtrack_event_config_v1', null);
+        var payload = JSON.stringify(model || null);
+        if(!force && payload === lastEventPayload) return;
+        lastEventPayload = payload;
+        try {
+          window.dispatchEvent(new CustomEvent('prodtrack:events-config', { detail: { model: model, source: 'saisie-sync' } }));
+        } catch (err) {
+          console.warn('events config dispatch failed:', err);
+        }
+      }
+
+      function refreshAll(forceEvents){
+        refreshTeams();
+        refreshProfiles();
+        refreshEventsFromStorage(!!forceEvents);
+      }
+
+      refreshAll(true);
 
       document.addEventListener('visibilitychange', function(){
-        if(!document.hidden) hydrateTeams();
+        if(!document.hidden) refreshAll(false);
+      });
+
+      window.addEventListener('params:changed', function(){
+        refreshAll(true);
       });
 
       window.addEventListener('prodtrack:teams-updated', function(evt){
-        var detailTeams = evt && evt.detail && Array.isArray(evt.detail.teams) ? evt.detail.teams : null;
-        fillTeamSelect(document.getElementById('filtre-equipe') || document.querySelector('[data-team-select]'), detailTeams || loadTeams());
+        var detailTeams = evt && evt.detail && Array.isArray(evt.detail.teams) ? evt.detail.teams : undefined;
+        refreshTeams(detailTeams);
+      });
+
+      window.addEventListener('prodtrack:events-config', function(evt){
+        var model = evt && evt.detail ? (evt.detail.model || null) : null;
+        lastEventPayload = JSON.stringify(model || null);
       });
 
       var saveAllBtn = document.getElementById('cfg-save-all');
-      if(saveAllBtn && !saveAllBtn.__teamSyncAttached){
-        saveAllBtn.__teamSyncAttached = true;
+      if(saveAllBtn && !saveAllBtn.__paramsRefreshAttached){
+        saveAllBtn.__paramsRefreshAttached = true;
         saveAllBtn.addEventListener('click', function(){
-          setTimeout(hydrateTeams, 50);
+          setTimeout(function(){ refreshAll(true); }, 80);
         });
       }
-    } catch (e) {
-      console.warn('team select sync skipped', e);
+    }catch(err){
+      console.warn('params sync listener skipped', err);
     }
   })();
   </script>
