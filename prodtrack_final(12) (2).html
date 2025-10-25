@@ -2900,7 +2900,9 @@
         }
         additionHistory = events.map(event => event.id);
         renderEvents();
-        requestRecompute(true); // FIX: premier calcul forcé même en mode perf
+        refreshSummary();        // FIX:v37 init complète après chargement
+        generateTimeSlots();     // FIX:v37 init complète après chargement
+        requestRecompute(true);  // FIX:v37 init complète après chargement
         syncSequenceCounters();
         updateSaveStatus(true);
     }
@@ -3387,6 +3389,8 @@
                 selectedTeamId = teamSelect.value;
                 selectedTimeSlot = null;
                 generateTimeSlots();
+                refreshSummary();           // FIX:v37 ordre d'appel standardisé
+                requestRecompute(true);     // FIX:v37 ordre d'appel standardisé
                 updateQuantityInputState();
             });
         }
@@ -3480,6 +3484,9 @@
             loadEventsFromStorage();
             renderClosures();
             updateQuantityInputState();
+            generateTimeSlots();        // FIX:v37 ordre d'appel standardisé
+            refreshSummary();           // FIX:v37 ordre d'appel standardisé
+            requestRecompute(true);     // FIX:v37 ordre d'appel standardisé
         });
         eventTableBody.addEventListener('click', (e) => {
             const editId = e.target.dataset.edit;
@@ -3551,6 +3558,9 @@
                 buildDynamicFields();
                 refreshEventFieldSuggestions();
                 updateActiveProfileMeta();
+                generateTimeSlots();     // FIX:v37 ordre d'appel standardisé
+                refreshSummary();        // FIX:v37 ordre d'appel standardisé
+                requestRecompute(true);  // FIX:v37 ordre d'appel standardisé
                 showToast('Configuration chargée.');
             } catch (err) {
                 console.warn(err);
@@ -3592,7 +3602,11 @@
         updateQuantityInputState();
         updateClock();
         setInterval(updateClock, 1000);
-        requestRecompute(true);
+        if (!timeSlotsContainer || !timeSlotsContainer.querySelector('.time-slot')) {
+            generateTimeSlots(); // FIX:v37 guard grille horaire
+        }
+        refreshSummary();        // FIX:v37 guard grille horaire
+        requestRecompute(true);  // FIX:v37 premier calcul après garde
         typeSelect.focus();
     }
 
