@@ -1292,6 +1292,13 @@
         </section>
 
     </main>
+    <!-- FIX: placeholders anti-null -->
+    <div id="profileMinutesAjust" style="display:none"></div>
+    <div id="profileMinutesReste"  style="display:none"></div>
+    <div id="profileDelta"         style="display:none"></div>
+    <div id="profileValidation"    style="display:none"></div>
+    <div id="profileOeeHour"       style="display:none"></div>
+    <div id="profileOeeTarget"     style="display:none"></div>
     <section id="page-histo" role="region" aria-label="Historique de saisie" style="display:none; padding:16px;">
       <h2>Historique de saisie</h2>
       <div id="histo-events-host"></div>
@@ -1387,6 +1394,7 @@
   <div style="display:flex;gap:8px;margin-top:12px;">
     <button id="cfg-save" type="button">Enregistrer</button>
     <button id="cfg-reset" type="button">Réinitialiser</button>
+    <button id="cfg-perf-reset" type="button">Réinitialiser préférences performance</button>
     <span id="cfg-msg" style="opacity:.7;margin-left:auto;"></span>
   </div>
       </div>
@@ -1601,6 +1609,8 @@
         utilite: { label: 'Utilité', type: 'text' }
     };
 
+    const $id = (id) => document.getElementById(id) || null; // FIX: safe getter
+
     const form = document.getElementById('eventForm');
     const toast = document.getElementById('toast');
     const typeSelect = document.getElementById('type');
@@ -1617,16 +1627,16 @@
     const summarySplitD = document.getElementById('summarySplitD');
     const summarySplitP = document.getElementById('summarySplitP');
     const summarySplitQ = document.getElementById('summarySplitQ');
-    const profileMinutesAjust = document.getElementById('profileMinutesAjust');
-    const profileMinutesAjustHint = document.getElementById('profileMinutesAjustHint');
-    const profileMinutesCauses = document.getElementById('profileMinutesCauses');
-    const profileMinutesReste = document.getElementById('profileMinutesReste');
-    const profileDelta = document.getElementById('profileDelta');
-    const profileDeltaHint = document.getElementById('profileDeltaHint');
-    const profileOeeHour = document.getElementById('profileOeeHour');
-    const profileOeeTarget = document.getElementById('profileOeeTarget');
-    const profileValidation = document.getElementById('profileValidation');
-    const profileValidationHint = document.getElementById('profileValidationHint');
+    const profileMinutesAjust = $id('profileMinutesAjust');
+    const profileMinutesAjustHint = $id('profileMinutesAjustHint');
+    const profileMinutesCauses = $id('profileMinutesCauses');
+    const profileMinutesReste = $id('profileMinutesReste');
+    const profileDelta = $id('profileDelta');
+    const profileDeltaHint = $id('profileDeltaHint');
+    const profileOeeHour = $id('profileOeeHour');
+    const profileOeeTarget = $id('profileOeeTarget');
+    const profileValidation = $id('profileValidation');
+    const profileValidationHint = $id('profileValidationHint');
     const dynamicFieldsContainer = document.getElementById('dynamicFields');
     const configFileInput = document.getElementById('configFileInput');
     const submitBtn = document.getElementById('submitBtn');
@@ -1683,30 +1693,31 @@
         }
     };
 
+    // PERF: throttle recompute
     let recomputeQueued = false;
-    const queueRecompute = debounce(() => {
-        if (recomputeQueued) return;
-        recomputeQueued = true;
-        scheduleWork(() => recompute());
-    }, 200);
+    let recomputeTimer = null;
 
     function requestRecompute(immediate = false) {
-        if (modePerformance && !immediate) {
-            // PERF: en mode optimisé, seule une action manuelle relance le calcul
-            return;
-        }
         if (immediate) {
+            if (recomputeTimer) {
+                clearTimeout(recomputeTimer);
+                recomputeTimer = null;
+            }
             recomputeQueued = false;
             scheduleWork(() => recompute());
             return;
         }
-        queueRecompute();
+        if (recomputeQueued) return;
+        recomputeQueued = true;
+        recomputeTimer = setTimeout(() => {
+            recomputeQueued = false;
+            scheduleWork(() => recompute());
+        }, 150);
     }
+    window.requestRecompute = requestRecompute; // FIX: expose for maintenance actions
 
-    const hourWriteQueue = new Map(); // PERF: file d'écritures différées
-    const flushHourWritesDebounced = debounce(() => {
-        scheduleWork(flushHourWrites);
-    }, 300);
+    const pendingWrites = new Map(); // PERF: file d'écritures différées
+    const flushWritesDebounced = debounce(() => scheduleWork(flushWrites), 300);
 
     const RULE_FIELD_KEYS = Object.keys(FIELD_DEFS);
 
@@ -2127,36 +2138,36 @@
         localStorage.setItem(key, JSON.stringify(hourQuantities));
     }
 
-    function flushHourWrites() {
+    function flushWrites() {
         // PERF: vidage groupé des écritures horaires
-        if (!hourWriteQueue.size) return;
-        hourWriteQueue.forEach((value, hour) => {
+        if (!pendingWrites.size) return;
+        pendingWrites.forEach((value, hour) => {
             if (value === null) {
                 delete hourQuantities[hour];
             } else {
                 hourQuantities[hour] = value;
             }
         });
-        hourWriteQueue.clear();
+        pendingWrites.clear();
         saveHourQuantities();
     }
 
-    function queueHourPersist(hour, value) {
+    function queueHourWrite(hour, value) {
         // PERF: mémorise la modification et déclenche un flush différé
         if (!hour) return;
         if (value === null || value === undefined) {
-            hourWriteQueue.set(hour, null);
+            pendingWrites.set(hour, null);
             delete hourQuantities[hour];
         } else {
-            hourWriteQueue.set(hour, value);
+            pendingWrites.set(hour, value);
             hourQuantities[hour] = value;
         }
-        flushHourWritesDebounced();
+        flushWritesDebounced();
     }
 
-    function flushHourWritesImmediate() {
-        flushHourWritesDebounced.cancel();
-        flushHourWrites();
+    function flushWritesImmediate() {
+        flushWritesDebounced.cancel();
+        flushWrites();
     }
 
     function loadClosuresFromStorage() {
@@ -2513,8 +2524,10 @@
         if (vgRefreshBtn) {
             vgRefreshBtn.style.display = modePerformance ? '' : 'none';
         }
-        if (modePerformance && typeof queueRecompute.cancel === 'function') {
-            queueRecompute.cancel();
+        if (modePerformance && recomputeTimer) {
+            clearTimeout(recomputeTimer); // FIX: cancel pending recompute when perf mode toggles
+            recomputeTimer = null;
+            recomputeQueued = false;
         }
         if (!modePerformance) {
             requestRecompute(true);
@@ -2887,7 +2900,7 @@
         }
         additionHistory = events.map(event => event.id);
         renderEvents();
-        requestRecompute(true);
+        requestRecompute(true); // FIX: premier calcul forcé même en mode perf
         syncSequenceCounters();
         updateSaveStatus(true);
     }
@@ -3210,7 +3223,7 @@
             showToast('Aucun événement à exporter.');
             return;
         }
-        flushHourWritesImmediate();
+        flushWritesImmediate();
         const columns = activeConfig.export.csv_columns;
         scheduleWork(() => {
             // PERF: sérialisation CSV hors thread principal immédiat
@@ -3235,7 +3248,7 @@
             showToast('Aucun événement à exporter.');
             return;
         }
-        flushHourWritesImmediate();
+        flushWritesImmediate();
         scheduleWork(() => {
             // PERF: génération JSON différée pour éviter un blocage
             const payload = {
@@ -3350,7 +3363,7 @@
                 }
                 const rawValue = hourQuantityInput.value;
                 if (rawValue === '') {
-                    queueHourPersist(selectedTimeSlot, null);
+                    queueHourWrite(selectedTimeSlot, null);
                     updateSlotQuantityIndicator(selectedTimeSlot);
                     requestRecompute();
                     return;
@@ -3361,7 +3374,7 @@
                     hourQuantityInput.value = hourQuantities[selectedTimeSlot] ?? '';
                     return;
                 }
-                queueHourPersist(selectedTimeSlot, numeric);
+                queueHourWrite(selectedTimeSlot, numeric);
                 updateSlotQuantityIndicator(selectedTimeSlot);
                 requestRecompute();
             });
@@ -3453,7 +3466,7 @@
             });
         }
         lineInput.addEventListener('change', () => {
-            flushHourWritesImmediate(); // PERF: garantir la persistance avant changement de ligne
+            flushWritesImmediate(); // PERF: garantir la persistance avant changement de ligne
             storeLine(lineInput.value.trim());
             form.reset();
             durationInput.value = '';
@@ -3486,7 +3499,7 @@
         
         newDayBtn.addEventListener('click', () => {
             if (confirm('Créer une nouvelle journée ?')) {
-                flushHourWritesImmediate();
+                flushWritesImmediate();
                 events = [];
                 additionHistory = [];
                 hourQuantities = {};
@@ -3549,34 +3562,15 @@
     }
 
     window.__pt = window.__pt || {};
-    // PERF: helper console pour mesurer un scénario d'édition massif
-    window.__pt.testPerf = function () {
-        try {
-            const sampleHour = selectedTimeSlot || '08';
-            const previous = hourQuantities.hasOwnProperty(sampleHour) ? hourQuantities[sampleHour] : undefined;
-            const start = performance.now();
-            for (let i = 0; i < 50; i += 1) {
-                queueHourPersist(sampleHour, i);
-            }
-            flushHourWritesImmediate();
-            requestRecompute(true);
-            const elapsed = performance.now() - start;
-            if (previous === undefined) {
-                queueHourPersist(sampleHour, null);
-            } else {
-                queueHourPersist(sampleHour, previous);
-            }
-            flushHourWritesImmediate();
-            requestRecompute(true);
-            return {
-                durationMs: Math.round(elapsed * 100) / 100,
-                hour: sampleHour,
-                modePerformance,
-                writesFlushed: true
-            };
-        } catch (err) {
-            return { error: err?.message || String(err) };
+    window.__pt.testPerf = async function () { // PERF: mesure de rafale synthétique
+        const start = performance.now();
+        for (let i = 0; i < 50; i += 1) {
+            requestRecompute();
         }
+        await new Promise((resolve) => setTimeout(resolve, 1200));
+        const duration = (performance.now() - start).toFixed(1);
+        console.log('TEST PERF: 50 editions simulées en', duration, 'ms');
+        return Number(duration);
     };
 
     function initialize() {
@@ -3620,7 +3614,7 @@
     });
 
     window.addEventListener('beforeunload', () => {
-        flushHourWritesImmediate();
+        flushWritesImmediate();
     });
 })();
 </script>
@@ -3628,6 +3622,8 @@
 <script>
 (function(){
   if (window._ppUpdateHourTiles) return;
+
+  var $id = window.$id || function(id){ return document.getElementById(id) || null; }; // FIX: shared getter fallback
 
   function toNumber(value) {
     if (value === null || value === undefined || value === '') return NaN;
@@ -3669,13 +3665,13 @@
 
   window._ppUpdateHourTiles = function(selectedHour, minutesAjust, metrics, eventList, minutesCauses) {
     try {
-      var shMin = document.getElementById('sh-min-total');
-      var shCause = document.getElementById('sh-top-cause');
-      var shStatus = document.getElementById('sh-status');
-      var shRemaining = document.getElementById('sh-remaining');
-      var shWindow = document.getElementById('sh-window');
-      var vgStatus = document.getElementById('vg-status');
-      var vgMsg = document.getElementById('vg-msg');
+      var shMin = $id('sh-min-total');
+      var shCause = $id('sh-top-cause');
+      var shStatus = $id('sh-status');
+      var shRemaining = $id('sh-remaining');
+      var shWindow = $id('sh-window');
+      var vgStatus = $id('vg-status');
+      var vgMsg = $id('vg-msg');
 
       if (!shMin && !shCause && !shStatus && !shRemaining && !shWindow && !vgStatus && !vgMsg) {
         return;
@@ -3703,11 +3699,11 @@
 
       var adjustMinutes = toNumber(minutesAjust);
       if (!Number.isFinite(adjustMinutes)) {
-        var ajustEl = document.getElementById('profileMinutesAjust');
+        var ajustEl = $id('profileMinutesAjust');
         adjustMinutes = parseMinutesText(ajustEl && ajustEl.textContent);
       }
       if (!Number.isFinite(adjustMinutes)) {
-        var resteEl = document.getElementById('profileMinutesReste');
+        var resteEl = $id('profileMinutesReste');
         var resteValue = parseMinutesText(resteEl && resteEl.textContent);
         if (Number.isFinite(resteValue)) {
           adjustMinutes = resteValue + stopMinutes;
@@ -4504,6 +4500,7 @@
     var modePerf = byId('cfg-mode-performance');
     var saveBtn = byId('cfg-save');
     var resetBtn = byId('cfg-reset');
+    var perfResetBtn = byId('cfg-perf-reset');
     var msg = byId('cfg-msg');
 
     var KEY = 'prodtrack_cfg';
@@ -4570,6 +4567,15 @@
       emitChanged('line-reset');
     }
 
+    function resetPerfPrefs(){ // FIX: reset performance preferences
+      try{ localStorage.removeItem(KEY); }catch(e){}
+      if(modePerf) modePerf.checked = false;
+      document.body.classList.remove('mode-performance');
+      setMessage('Préférences performance réinitialisées');
+      try { window.requestRecompute && window.requestRecompute(true); } catch(e) {}
+      emitChanged('perf-reset');
+    }
+
     function emitChanged(source){
       try{
         window.dispatchEvent(new CustomEvent('params:changed', { detail: { source: source || 'line-config' } }));
@@ -4582,6 +4588,7 @@
 
     if(saveBtn) saveBtn.addEventListener('click', saveCfg);
     if(resetBtn) resetBtn.addEventListener('click', resetCfg);
+    if(perfResetBtn) perfResetBtn.addEventListener('click', resetPerfPrefs);
   }catch(err){
     console.warn('cfg-ligne-save init skipped:', err);
   }
