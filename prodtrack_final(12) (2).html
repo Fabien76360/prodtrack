@@ -38,6 +38,20 @@
         overflow-x: hidden;
     }
 
+    /* PERF: styles adoucis en mode performance */
+    body.mode-performance .sidebar {
+        backdrop-filter: none;
+        box-shadow: 0 10px 24px rgba(2, 6, 23, 0.25);
+    }
+
+    body.mode-performance .card {
+        box-shadow: 0 6px 16px rgba(15, 23, 42, 0.25);
+    }
+
+    body.mode-performance .card[class*="validation"] {
+        box-shadow: 0 4px 12px rgba(15, 23, 42, 0.18);
+    }
+
     body::before {
         content: '';
         position: fixed;
@@ -513,6 +527,44 @@
         font-size: 1.3rem;
         font-weight: 600;
         color: var(--text);
+    }
+
+    /* --- Ajustements ergonomiques : espacement et taille --- */
+
+    /* 1️⃣ Réduction hauteur tuiles Synthèse & Validation */
+    #tile-synth-heure.card,
+    #tile-validation-globale.card {
+        padding-top: 12px !important;
+        padding-bottom: 12px !important;
+        min-height: unset !important;
+    }
+
+    /* 2️⃣ Cartes génériques : padding vertical réduit */
+    .card {
+        padding-top: 12px !important;
+        padding-bottom: 12px !important;
+    }
+
+    /* 3️⃣ Boutons navigation (menu latéral + bouton retour) */
+    nav button,
+    #btn-retour,
+    button[data-role="nav"],
+    button[class*="menu" i] {
+        padding-left: 16px !important;
+        padding-right: 16px !important;
+    }
+
+    /* Uniformité visuelle : éviter surépaisseurs */
+    .card h3,
+    .card h2,
+    .card h4 {
+        margin-top: 0.5rem !important;
+        margin-bottom: 0.5rem !important;
+    }
+
+    /* Réduction globale des marges inter-tuiles */
+    .dashboard-grid > .card {
+        margin-bottom: 10px !important;
     }
 
     .time-slots-grid {
@@ -995,17 +1047,17 @@
     </div>
 
     <nav class="sidebar-menu">
-        <button class="menu-item active" data-menu="saisie">
+        <button class="menu-item active" data-menu="saisie" id="nav-saisie-link">
             <span class="menu-icon">⏱️</span>
             Saisie opérateur
         </button>
-        <button class="menu-item" data-menu="historique">
+        <button class="menu-item" data-menu="historique" id="nav-histo-link">
             <span class="menu-icon">📋</span>
             Historique de saisie
         </button>
-        <button class="menu-item" data-menu="parametres">
-            <span class="menu-icon">⚙️</span>
-            Paramètres
+        <button class="menu-item" id="nav-params-link" type="button" aria-controls="page-params">
+            <span class="menu-icon">🛠️</span>
+            Paramétrage
         </button>
     </nav>
 
@@ -1097,19 +1149,15 @@
 
             <fieldset class="line-config">
                 <legend class="line-config-title">Configuration ligne</legend>
-                <div class="line-config-options">
-                    <label class="line-config-option">
-                        <input type="radio" name="lineConfiguration" value="standard" checked>
-                        <span>Standard</span>
-                    </label>
-                    <label class="line-config-option">
-                        <input type="radio" name="lineConfiguration" value="cadence-plus">
-                        <span>Cadence +</span>
-                    </label>
-                    <label class="line-config-option">
-                        <input type="radio" name="lineConfiguration" value="oee-max">
-                        <span>OEE cible +</span>
-                    </label>
+                <div id="profil-ligne" style="display:flex;flex-direction:column;gap:6px;">
+                    <label for="profil-actif">Profil actif</label>
+                    <select id="profil-actif" aria-label="Profil actif">
+                        <option value="">Sélectionner un profil</option>
+                        <option value="jour-standard">Jour – Standard</option>
+                        <option value="soir-haute">Soir – Haute cadence</option>
+                        <option value="nuit-maint">Nuit – Maintenance</option>
+                    </select>
+                    <small id="profil-note" style="opacity:.7;">La sélection ajuste automatiquement la cadence et l’OEE cible.</small>
                 </div>
             </fieldset>
 
@@ -1146,72 +1194,76 @@
         </section>
 
         <!-- Event Form Section -->
-        <section class="card" aria-label="Nouvel événement">
-            <h2>événements</h2>
-            <div class="profile-meta" aria-live="polite">
-                <div class="profile-meta-grid profile-meta-grid--dual">
-                    <div class="profile-meta-card">
-                        <span class="profile-meta-label">Minutes à justifier</span>
-                        <span class="profile-meta-value" id="profileMinutesAjust">—</span>
-                        <span class="profile-meta-subtext" id="profileMinutesAjustHint">Production vs objectif</span>
+        <section class="card" id="tile-evenements" data-tile="evenements" aria-label="Nouvel événement">
+            <h2>Événements</h2>
+            <div style="display:flex; flex-direction:column; gap:1.5rem;">
+                <div id="evenements-zone-saisie" style="display:flex; flex-direction:column; gap:1rem; background:rgba(15,23,42,0.55); border:1px solid var(--border); border-radius:16px; padding:1.25rem;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:0.75rem;">
+                        <span style="font-size:0.75rem; letter-spacing:0.08em; text-transform:uppercase; opacity:0.7;">Zone de saisie événement</span>
+                        <span style="font-size:0.75rem; opacity:0.6;">Compléter avant validation</span>
                     </div>
-                    <div class="profile-meta-card">
-                        <span class="profile-meta-label">Delta</span>
-                        <span class="profile-meta-value profile-meta-delta neutral" id="profileDelta">—</span>
-                        <span class="profile-meta-subtext" id="profileDeltaHint">Cible : —</span>
-                    </div>
+                    <form id="eventForm">
+                        <div class="form-grid" id="formGrid">
+                            <label>
+                                Type
+                                <select id="type" name="type" required></select>
+                            </label>
+                            <label>
+                                Catégorie
+                                <select id="category" name="category" required></select>
+                            </label>
+                            <label>
+                                Cause 5M
+                                <select id="cause" name="cause" required></select>
+                            </label>
+                            <label>
+                                Détail
+                                <select id="detail" name="detail" required></select>
+                            </label>
+                            <label>
+                                Durée (min)
+                                <input id="duration" name="duration" type="number" min="1" step="1" required>
+                                <small id="hint-duree" style="opacity:.6;display:block;margin-top:4px;">en minutes</small>
+                            </label>
+                            <div id="dynamicFields" class="form-grid" style="grid-column: 1/-1; padding-top:0"></div>
+                        </div>
+                        <label data-field="commentaire" class="optional-field" style="display:flex; flex-direction:column; gap:0.5rem; margin-top:1.5rem;">
+                            Commentaire
+                            <textarea id="commentaire" name="commentaire" maxlength="200" placeholder="Observation"></textarea>
+                        </label>
+                        <div style="margin-top:1.5rem; display:flex; gap:1rem; flex-wrap:wrap">
+                            <button id="submitBtn" type="submit">Ajouter</button>
+                            <button id="undoLastBtn" class="secondary" type="button">Annuler la dernière saisie</button>
+                        </div>
+                    </form>
                 </div>
-                <div class="profile-meta-grid profile-meta-grid--triple">
-                    <div class="profile-meta-card">
-                        <span class="profile-meta-label">OEE horaire</span>
-                        <span class="profile-meta-value" id="profileOeeHour">—</span>
-                        <span class="profile-meta-subtext">Cible : <span id="profileOeeTarget">—</span></span>
+                <div id="evenements-recap" style="display:flex; flex-wrap:wrap; gap:1.25rem; align-items:flex-start;">
+                    <div id="tile-synth-heure" class="card" style="min-width:240px;max-width:360px;padding:16px;border-radius:16px;">
+                      <div style="opacity:.7;font-weight:600;letter-spacing:.06em;">SYNTHÈSE HEURE</div>
+                      <div style="height:6px;width:44px;background:#6ee7e7;border-radius:4px;margin:8px 0;"></div>
+                      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:4px 0;">
+                        <div style="display:flex;align-items:center;gap:8px;">
+                          <span style="display:inline-block;width:8px;height:8px;border-radius:9999px;background:#9aa4af;"></span>
+                          <span id="sh-top-cause" style="opacity:.9;">—</span>
+                        </div>
+                        <div id="sh-min-total" style="font-weight:700;">0 min</div>
+                      </div>
+                      <div style="border-top:1px dashed rgba(255,255,255,.12);margin:8px 0;"></div>
+                      <div style="padding:10px;border-radius:12px;background:rgba(255,255,255,.05);">
+                        <div style="opacity:.6;font-weight:600;letter-spacing:.06em;">VALIDATION LOCALE</div>
+                        <div id="sh-status" style="margin-top:6px;font-weight:800;color:#ef4444;">À équilibrer</div>
+                        <div id="sh-remaining" style="opacity:.8;margin-top:2px;">0 min à répartir</div>
+                      </div>
+                      <small id="sh-window" style="opacity:.6;display:block;margin-top:8px;">Fenêtre: —:—–—:—</small>
                     </div>
-                    <div class="profile-meta-card">
-                        <span class="profile-meta-label">Minutes causes</span>
-                        <span class="profile-meta-value" id="profileMinutesCauses">—</span>
-                        <span class="profile-meta-subtext">Reste : <span id="profileMinutesReste">—</span> min</span>
-                    </div>
-                    <div class="profile-meta-card">
-                        <span class="profile-meta-label">Validation</span>
-                        <span class="profile-meta-value profile-meta-validation idle" id="profileValidation">—</span>
-                        <span class="profile-meta-subtext" id="profileValidationHint">Sélectionnez un créneau</span>
-                    </div>
+                    <div id="tile-validation-globale" class="card" style="min-width:240px;max-width:360px;padding:16px;border-radius:16px;">
+                      <div style="opacity:.7;font-weight:600;letter-spacing:.06em;">VALIDATION GLOBALE</div>
+  <div style="height:6px;width:44px;background:#60a5fa;border-radius:4px;margin:8px 0;"></div>
+  <div id="vg-status" style="font-weight:800;color:#ef4444;">À équilibrer</div>
+  <div id="vg-msg" style="opacity:.8;margin-top:4px;">Répartir 0 min sur des causes</div>
+  <button id="vg-refresh" type="button" style="margin-top:12px;display:none;">Rafraîchir la synthèse</button>
+</div>
                 </div>
-            </div>
-            <form id="eventForm">
-                <div class="form-grid" id="formGrid">
-                    <label>
-                        Type
-                        <select id="type" name="type" required></select>
-                    </label>
-                    <label>
-                        Catégorie
-                        <select id="category" name="category" required></select>
-                    </label>
-                    <label>
-                        Cause 5M
-                        <select id="cause" name="cause" required></select>
-                    </label>
-                    <label>
-                        Détail
-                        <select id="detail" name="detail" required></select>
-                    </label>
-                    <label>
-                        Durée (min)
-                        <input id="duration" name="duration" type="number" min="1" step="1" required>
-                    </label>
-                    <div id="dynamicFields" class="form-grid" style="grid-column: 1/-1; padding-top:0"></div>
-                </div>
-                <label data-field="commentaire" class="optional-field" style="display:flex; flex-direction:column; gap:0.5rem; margin-top:1.5rem;">
-                    Commentaire
-                    <textarea id="commentaire" name="commentaire" maxlength="200" placeholder="Observation"></textarea>
-                </label>
-                <div style="margin-top:1.5rem; display:flex; gap:1rem; flex-wrap:wrap">
-                    <button id="submitBtn" type="submit">Ajouter</button>
-                    <button id="undoLastBtn" class="secondary" type="button">Annule dernière saisie</button>
-                </div>
-            </form>
         </section>
 
         <!-- Events Table Section -->
@@ -1240,6 +1292,123 @@
         </section>
 
     </main>
+    <section id="page-histo" role="region" aria-label="Historique de saisie" style="display:none; padding:16px;">
+      <h2>Historique de saisie</h2>
+      <div id="histo-events-host"></div>
+      <div style="overflow:auto;max-height:60vh;border:1px solid rgba(0,0,0,.1);border-radius:8px;">
+        <table id="histo-table" style="width:100%;border-collapse:collapse;">
+          <tbody></tbody>
+        </table>
+      </div>
+      <button id="btn-back-from-histo" type="button">Retour</button>
+    </section>
+
+    <section id="page-params" role="region" aria-label="Paramétrage" style="display:none; padding:16px;">
+      <section id="cfg-teams" class="card" style="padding:16px;border-radius:16px;max-width:980px;margin:16px 0;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <h3 style="margin:0;">Noms d’équipes</h3>
+          <button id="tm-add" type="button" style="margin-left:auto;">+ Ajouter</button>
+        </div>
+        <div style="opacity:.7;margin:6px 0 12px;">Personnalisez les libellés utilisés dans les filtres et tableaux.</div>
+        <div id="tm-list" style="display:flex;flex-direction:column;gap:14px;"></div>
+        <div id="tm-msg" style="opacity:.75;margin-top:8px;"></div>
+      </section>
+      <template id="tm-item-tpl">
+        <div class="tm-item" style="border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:12px;">
+          <div style="display:grid;grid-template-columns:1fr 140px 140px 140px auto;gap:12px;align-items:center;">
+            <div>
+              <label>Nom affiché</label>
+              <input class="tm-name" type="text" placeholder="Équipe A">
+            </div>
+            <div>
+              <label>Code</label>
+              <input class="tm-code" type="text" placeholder="A">
+            </div>
+            <div>
+              <label>Début</label>
+              <input class="tm-start" type="time">
+            </div>
+            <div>
+              <label>Fin</label>
+              <input class="tm-end" type="time">
+            </div>
+            <div style="display:flex;gap:6px;justify-content:flex-end;">
+              <button class="tm-up" type="button" title="Monter">↑</button>
+              <button class="tm-down" type="button" title="Descendre">↓</button>
+              <button class="tm-del" type="button" style="background:#fecaca;color:#7f1d1d;">Supprimer</button>
+            </div>
+          </div>
+        </div>
+      </template>
+      <section id="cfg-profiles" class="card" style="padding:16px;border-radius:16px;max-width:980px;margin-bottom:16px;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <h3 style="margin:0;">Profils OEE & Cadence</h3>
+          <button id="pf-add" type="button" style="margin-left:auto;">+ Profil</button>
+        </div>
+        <div style="opacity:.7;margin:6px 0 12px;">Définissez les cibles par profil.</div>
+        <div id="pf-list" style="display:flex;flex-direction:column;gap:14px;"></div>
+      </section>
+      <template id="pf-item-tpl">
+        <div class="pf-item" style="border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:12px;">
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input class="pf-name" type="text" placeholder="Nom du profil" style="flex:1;">
+            <div style="display:flex;gap:6px;">
+              <button class="pf-up" type="button" title="Monter">↑</button>
+              <button class="pf-down" type="button" title="Descendre">↓</button>
+            </div>
+            <button class="pf-del" type="button" style="background:#fecaca;color:#7f1d1d;">Supprimer</button>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:10px;">
+            <div><label>CADENCE CIBLE (U/H)</label><input class="pf-cad" type="number" step="1" min="0" placeholder="16000"></div>
+            <div><label>QUALITÉ CIBLE (%)</label><input class="pf-qual" type="number" step="0.1" min="0" max="100" placeholder="98"></div>
+            <div><label>DISPONIBILITÉ CIBLE (%)</label><input class="pf-disp" type="number" step="0.1" min="0" max="100" placeholder="92"></div>
+            <div><label>OEE CIBLE (%)</label><input class="pf-oee" type="number" step="0.1" min="0" max="100" placeholder="85"></div>
+          </div>
+        </div>
+      </template>
+      <div id="cfg-ligne-save" class="card" style="padding:16px;border-radius:16px;max-width:720px;margin-bottom:12px;">
+        <div style="font-weight:600;">Ligne & sauvegarde</div>
+        <div style="opacity:.7;margin-bottom:12px;">Définissez la ligne active et la destination des exports.</div>
+
+        <label for="cfg-line" style="display:block;margin-top:8px;">Ligne</label>
+        <input id="cfg-line" type="text" placeholder="Ex. L27" style="width:100%;">
+
+        <label for="cfg-path-report" style="display:block;margin-top:12px;">Chemin / lien du <b>rapport</b></label>
+        <input id="cfg-path-report" type="text" placeholder="Dossier ou URL de dépôt du rapport" style="width:100%;">
+
+  <label for="cfg-path-live" style="display:block;margin-top:12px;">Chemin / lien du <b>fichier en cours</b></label>
+  <input id="cfg-path-live" type="text" placeholder="Dossier ou URL du fichier en cours" style="width:100%;">
+
+  <div style="display:flex;align-items:center;gap:12px;margin-top:14px;">
+    <input id="cfg-mode-performance" type="checkbox" style="width:auto;height:auto;">
+    <label for="cfg-mode-performance" style="margin:0;">Activer le mode performance</label>
+  </div>
+
+  <div style="display:flex;gap:8px;margin-top:12px;">
+    <button id="cfg-save" type="button">Enregistrer</button>
+    <button id="cfg-reset" type="button">Réinitialiser</button>
+    <span id="cfg-msg" style="opacity:.7;margin-left:auto;"></span>
+  </div>
+      </div>
+      <section id="cfg-events-csv" class="card" style="padding:16px;border-radius:16px;max-width:980px;margin:16px 0;">
+        <h3 style="margin:0;">Configuration événements (CSV)</h3>
+        <p style="opacity:.75;margin:6px 0 12px;">Importez ou exportez les événements utilisés pour la saisie (Type → Catégorie → Cause 5M → Détail).</p>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <input id="evcsv-file" type="file" accept=".csv,text/csv">
+          <button id="evcsv-import" type="button">Importer</button>
+          <button id="evcsv-template" type="button">Télécharger modèle</button>
+          <button id="evcsv-export" type="button">Exporter actuel</button>
+          <span id="evcsv-msg" style="margin-left:auto;opacity:.75;"></span>
+        </div>
+        <small style="opacity:.7;">Colonnes supportées : type, categorie, cause5m, detail, equipement, article, zone</small>
+      </section>
+      <div id="cfg-save-all-wrap" style="margin:12px 0;display:flex;justify-content:flex-end;">
+        <button id="cfg-save-all" type="button">Sauvegarder tout</button>
+      </div>
+      <h2>Paramétrage</h2>
+      <p style="opacity:.7;">Page en construction.</p>
+      <button id="btn-back-from-params" type="button">Retour</button>
+    </section>
 </div>
 
 <div class="toast" role="status" aria-live="polite" id="toast"></div>
@@ -1400,11 +1569,14 @@
                     { slug: 'vis', label: 'Visée' }
                 ]
             }
-        ]
+        ],
+        team_shifts: TEAM_SHIFTS.map(shift => ({ ...shift }))
     };
 
+    const deepClone = (value) => JSON.parse(JSON.stringify(value));
+
     function withConfigDefaults(input) {
-        const base = JSON.parse(JSON.stringify(defaultConfig));
+        const base = deepClone(defaultConfig);
         if (!input || typeof input !== 'object') {
             return base;
         }
@@ -1461,6 +1633,7 @@
     const undoLastBtn = document.getElementById('undoLastBtn');
     const timeSlotsContainer = document.getElementById('timeSlots');
     const hourQuantityInput = document.getElementById('hourQuantity');
+    const vgRefreshBtn = document.getElementById('vg-refresh');
     const clockDisplay = document.getElementById('clockDisplay');
     const timeUntil = document.getElementById('timeUntil');
     const saveStatusText = document.getElementById('saveStatusText');
@@ -1487,6 +1660,145 @@
     let additionHistory = [];
     let hourQuantities = {};
     let lineClosures = [];
+    let eventConfigModel = loadEventConfigModel();
+    let modePerformance = false; // PERF: suivi du mode optimisé
+
+    /* PERF: outils de temporisation */
+    // PERF: un seul debounce partagé pour lisser les rafales de saisie
+    const debounce = (fn, delay = 200) => {
+        let timer = null;
+        const debounced = (...args) => {
+            clearTimeout(timer);
+            timer = setTimeout(() => fn(...args), delay);
+        };
+        debounced.cancel = () => clearTimeout(timer);
+        return debounced;
+    };
+
+    const scheduleWork = (fn) => {
+        if (typeof window.requestIdleCallback === 'function') {
+            window.requestIdleCallback(fn, { timeout: 250 });
+        } else {
+            window.requestAnimationFrame(fn);
+        }
+    };
+
+    let recomputeQueued = false;
+    const queueRecompute = debounce(() => {
+        if (recomputeQueued) return;
+        recomputeQueued = true;
+        scheduleWork(() => recompute());
+    }, 200);
+
+    function requestRecompute(immediate = false) {
+        if (modePerformance && !immediate) {
+            // PERF: en mode optimisé, seule une action manuelle relance le calcul
+            return;
+        }
+        if (immediate) {
+            recomputeQueued = false;
+            scheduleWork(() => recompute());
+            return;
+        }
+        queueRecompute();
+    }
+
+    const hourWriteQueue = new Map(); // PERF: file d'écritures différées
+    const flushHourWritesDebounced = debounce(() => {
+        scheduleWork(flushHourWrites);
+    }, 300);
+
+    const RULE_FIELD_KEYS = Object.keys(FIELD_DEFS);
+
+    function getConfiguredTeamShifts() {
+        if (activeConfig && Array.isArray(activeConfig.team_shifts) && activeConfig.team_shifts.length) {
+            return activeConfig.team_shifts;
+        }
+        return TEAM_SHIFTS;
+    }
+
+    function escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>"']/g, (char) => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;'
+        })[char] || char);
+    }
+
+    function moveArrayItem(array, fromIndex, toIndex) {
+        if (!Array.isArray(array)) return array;
+        if (fromIndex === toIndex) return array;
+        if (fromIndex < 0 || fromIndex >= array.length) return array;
+        if (toIndex < 0 || toIndex >= array.length) return array;
+        const item = array.splice(fromIndex, 1)[0];
+        array.splice(toIndex, 0, item);
+        return array;
+    }
+
+    function uniqueList(values) {
+        const seen = new Set();
+        const result = [];
+        (values || []).forEach((value) => {
+            if (value === null || value === undefined) return;
+            const str = String(value).trim();
+            if (!str || seen.has(str)) return;
+            seen.add(str);
+            result.push(str);
+        });
+        return result;
+    }
+
+    function normalizeEventConfigModel(model) {
+        if (!model || typeof model !== 'object') {
+            return null;
+        }
+        const tree = {};
+        if (model.tree && typeof model.tree === 'object') {
+            Object.keys(model.tree).forEach((typeName) => {
+                if (!typeName) return;
+                const typeNode = model.tree[typeName];
+                const categoryBucket = {};
+                if (typeNode && typeof typeNode === 'object' && typeNode.categories && typeof typeNode.categories === 'object') {
+                    Object.keys(typeNode.categories).forEach((categoryName) => {
+                        if (!categoryName) return;
+                        const categoryNode = typeNode.categories[categoryName];
+                        const causeBucket = {};
+                        if (categoryNode && typeof categoryNode === 'object' && categoryNode.causes && typeof categoryNode.causes === 'object') {
+                            Object.keys(categoryNode.causes).forEach((causeName) => {
+                                if (!causeName) return;
+                                const causeNode = categoryNode.causes[causeName];
+                                const details = uniqueList(Array.isArray(causeNode?.details) ? causeNode.details : []);
+                                causeBucket[causeName] = { details };
+                            });
+                        }
+                        categoryBucket[categoryName] = { causes: causeBucket };
+                    });
+                }
+                tree[typeName] = { categories: categoryBucket };
+            });
+        }
+        const equips = uniqueList(Array.isArray(model.equips) ? model.equips : []);
+        const articles = uniqueList(Array.isArray(model.articles) ? model.articles : []);
+        const zones = uniqueList(Array.isArray(model.zones) ? model.zones : []);
+        if (!Object.keys(tree).length && !equips.length && !articles.length && !zones.length) {
+            return null;
+        }
+        return { tree, equips, articles, zones };
+    }
+
+    function loadEventConfigModel() {
+        try {
+            const raw = localStorage.getItem('prodtrack_event_config_v1');
+            if (!raw) return null;
+            const parsed = JSON.parse(raw);
+            return normalizeEventConfigModel(parsed);
+        } catch (err) {
+            console.warn('Event config load failed:', err);
+            return null;
+        }
+    }
 
     const today = new Date();
     const currentDate = today.toISOString().slice(0, 10);
@@ -1651,6 +1963,15 @@
         if (!profileMinutesAjust || !profileDelta || !profileValidation) return;
         const metrics = getMetrics();
 
+        const syncHourTiles = (hour, ajust, causes) => {
+            if (typeof window._ppUpdateHourTiles !== 'function') return;
+            try {
+                window._ppUpdateHourTiles(hour, ajust, metrics, events, causes);
+            } catch (err) {
+                console.warn('Hour tiles update failed:', err);
+            }
+        };
+
         if (profileOeeTarget) {
             profileOeeTarget.textContent = Number.isFinite(metrics.oeeTarget)
                 ? `${(Math.round(metrics.oeeTarget * 10) / 10).toFixed(1)}%`
@@ -1683,6 +2004,7 @@
             if (profileValidationHint) {
                 profileValidationHint.textContent = 'Sélectionnez un créneau';
             }
+            syncHourTiles(null, null, 0);
             return;
         }
 
@@ -1774,6 +2096,8 @@
                     : 'Compléter les informations';
             }
         }
+
+        syncHourTiles(hour, minutesAjust, minutesCauses);
     }
 
     function getProductionStorageKey() {
@@ -1803,6 +2127,38 @@
         localStorage.setItem(key, JSON.stringify(hourQuantities));
     }
 
+    function flushHourWrites() {
+        // PERF: vidage groupé des écritures horaires
+        if (!hourWriteQueue.size) return;
+        hourWriteQueue.forEach((value, hour) => {
+            if (value === null) {
+                delete hourQuantities[hour];
+            } else {
+                hourQuantities[hour] = value;
+            }
+        });
+        hourWriteQueue.clear();
+        saveHourQuantities();
+    }
+
+    function queueHourPersist(hour, value) {
+        // PERF: mémorise la modification et déclenche un flush différé
+        if (!hour) return;
+        if (value === null || value === undefined) {
+            hourWriteQueue.set(hour, null);
+            delete hourQuantities[hour];
+        } else {
+            hourWriteQueue.set(hour, value);
+            hourQuantities[hour] = value;
+        }
+        flushHourWritesDebounced();
+    }
+
+    function flushHourWritesImmediate() {
+        flushHourWritesDebounced.cancel();
+        flushHourWrites();
+    }
+
     function loadClosuresFromStorage() {
         try {
             const stored = localStorage.getItem(getClosureStorageKey());
@@ -1830,6 +2186,15 @@
     function updateQuantityInputState() {
         if (!hourQuantityInput) {
             updateActiveProfileMeta();
+            if (typeof window._ppUpdateHourTiles === 'function') {
+                try {
+                    const hourForTiles = selectedTimeSlot;
+                    const causes = hourForTiles ? calculateMinutesCausesForHour(hourForTiles) : 0;
+                    window._ppUpdateHourTiles(hourForTiles, null, getMetrics(), events, causes);
+                } catch (err) {
+                    console.warn('Hour tiles update failed:', err);
+                }
+            }
             return;
         }
         if (!selectedTimeSlot) {
@@ -1837,6 +2202,13 @@
             hourQuantityInput.disabled = true;
             hourQuantityInput.placeholder = 'Sélectionnez un créneau';
             updateActiveProfileMeta();
+            if (typeof window._ppUpdateHourTiles === 'function') {
+                try {
+                    window._ppUpdateHourTiles(null, null, getMetrics(), events, 0);
+                } catch (err) {
+                    console.warn('Hour tiles update failed:', err);
+                }
+            }
             return;
         }
         hourQuantityInput.disabled = false;
@@ -1844,29 +2216,40 @@
         hourQuantityInput.value = existing !== undefined ? existing : '';
         hourQuantityInput.placeholder = 'Quantité produite';
         updateActiveProfileMeta();
+        if (typeof window._ppUpdateHourTiles === 'function') {
+            try {
+                const causes = calculateMinutesCausesForHour(selectedTimeSlot);
+                window._ppUpdateHourTiles(selectedTimeSlot, null, getMetrics(), events, causes);
+            } catch (err) {
+                console.warn('Hour tiles update failed:', err);
+            }
+        }
     }
 
     function updateSlotQuantityIndicator(hour) {
         if (!timeSlotsContainer) return;
-        const slot = timeSlotsContainer.querySelector(`[data-hour="${hour}"]`);
-        if (!slot) return;
-        const quantity = hourQuantities[hour];
-        if (quantity !== undefined && quantity !== null && quantity !== '') {
-            slot.dataset.quantity = quantity;
-            const parts = [];
-            if (slot.dataset.closed === 'true') {
-                parts.push('Ligne fermée');
-            }
-            parts.push(`Quantité: ${quantity}`);
-            slot.title = parts.join(' • ');
-        } else {
-            delete slot.dataset.quantity;
-            if (slot.dataset.closed === 'true') {
-                slot.title = 'Ligne fermée';
+        scheduleWork(() => {
+            // PERF: mise à jour DOM sur frame libre
+            const slot = timeSlotsContainer.querySelector(`[data-hour="${hour}"]`);
+            if (!slot) return;
+            const quantity = hourQuantities[hour];
+            if (quantity !== undefined && quantity !== null && quantity !== '') {
+                slot.dataset.quantity = quantity;
+                const parts = [];
+                if (slot.dataset.closed === 'true') {
+                    parts.push('Ligne fermée');
+                }
+                parts.push(`Quantité: ${quantity}`);
+                slot.title = parts.join(' • ');
             } else {
-                slot.removeAttribute('title');
+                delete slot.dataset.quantity;
+                if (slot.dataset.closed === 'true') {
+                    slot.title = 'Ligne fermée';
+                } else {
+                    slot.removeAttribute('title');
+                }
             }
-        }
+        });
     }
 
     function renderClosures() {
@@ -1926,16 +2309,30 @@
         saveClosures();
         renderClosures();
         generateTimeSlots();
-        refreshSummary();
+        requestRecompute();
         closureStartInput.value = '';
         closureEndInput.value = '';
         showToast('Période de fermeture ajoutée.');
     }
 
-    function showToast(message) {
+    function showToast(message, type) {
+        if (!toast) return;
+        var palette = {
+            success: { bg: 'rgba(16, 185, 129, 0.85)', color: '#0f172a', shadow: '0 15px 30px rgba(16, 185, 129, 0.35)' },
+            error: { bg: 'rgba(239, 68, 68, 0.9)', color: '#fff', shadow: '0 15px 30px rgba(239, 68, 68, 0.35)' },
+            warning: { bg: 'rgba(250, 204, 21, 0.9)', color: '#0f172a', shadow: '0 15px 30px rgba(250, 204, 21, 0.35)' },
+            info: { bg: 'rgba(96, 165, 250, 0.85)', color: '#0f172a', shadow: '0 15px 30px rgba(96, 165, 250, 0.35)' }
+        }[type || 'success'];
+        if (!palette) {
+            palette = { bg: 'rgba(16, 185, 129, 0.85)', color: '#0f172a', shadow: '0 15px 30px rgba(16, 185, 129, 0.35)' };
+        }
+        toast.style.background = palette.bg;
+        toast.style.color = palette.color;
+        toast.style.boxShadow = palette.shadow;
         toast.textContent = message;
         toast.classList.add('show');
-        setTimeout(() => toast.classList.remove('show'), 2200);
+        clearTimeout(showToast._timer);
+        showToast._timer = setTimeout(() => toast.classList.remove('show'), 2200);
     }
 
     function updateSaveStatus(saved) {
@@ -1956,7 +2353,9 @@
     }
 
     function getTeamById(id) {
-        return TEAM_SHIFTS.find(team => team.id === id) || TEAM_SHIFTS[0];
+        const shifts = getConfiguredTeamShifts();
+        if (!shifts.length) return null;
+        return shifts.find(team => team.id === id) || shifts[0];
     }
 
     function getHoursForTeam(team) {
@@ -1977,7 +2376,8 @@
         const previousSelection = selectedTeamId;
         let hasPreviousSelection = false;
         teamSelect.innerHTML = '';
-        TEAM_SHIFTS.forEach(team => {
+        const shifts = getConfiguredTeamShifts();
+        shifts.forEach(team => {
             const option = document.createElement('option');
             option.value = team.id;
             option.textContent = team.label;
@@ -1986,82 +2386,97 @@
             }
             teamSelect.appendChild(option);
         });
+        if (!shifts.length) {
+            selectedTeamId = null;
+            return;
+        }
         if (hasPreviousSelection) {
             teamSelect.value = previousSelection;
+            selectedTeamId = previousSelection;
         } else {
-            teamSelect.value = TEAM_SHIFTS[0].id;
+            const fallbackId = shifts[0].id;
+            teamSelect.value = fallbackId;
+            selectedTeamId = fallbackId;
         }
-        selectedTeamId = teamSelect.value || TEAM_SHIFTS[0].id;
     }
 
     function generateTimeSlots() {
         if (!timeSlotsContainer) return;
-        timeSlotsContainer.innerHTML = '';
         const team = getTeamById(selectedTeamId);
         const hours = getHoursForTeam(team);
-        let selectionStillVisible = false;
+        scheduleWork(() => {
+            // PERF: génération différée des créneaux pour lisser l'UI
+            timeSlotsContainer.innerHTML = '';
+            const fragment = document.createDocumentFragment();
+            let selectionStillVisible = false;
 
-        hours.forEach((hour) => {
-            const startHour = String(hour).padStart(2, '0');
-            const endHour = String((hour + 1) % 24).padStart(2, '0');
-            const slotText = `${startHour}h00>${endHour}h00`;
+            hours.forEach((hour) => {
+                const startHour = String(hour).padStart(2, '0');
+                const endHour = String((hour + 1) % 24).padStart(2, '0');
+                const slotText = `${startHour}h00>${endHour}h00`;
 
-            const slot = document.createElement('button');
-            slot.type = 'button';
-            slot.className = 'time-slot';
-            slot.textContent = slotText;
-            slot.dataset.hour = startHour;
+                const slot = document.createElement('button');
+                slot.type = 'button';
+                slot.className = 'time-slot';
+                slot.textContent = slotText;
+                slot.dataset.hour = startHour;
 
-            const isClosed = isHourClosed(startHour);
-            if (isClosed) {
-                slot.classList.add('closed');
-                slot.dataset.closed = 'true';
+                const isClosed = isHourClosed(startHour);
+                if (isClosed) {
+                    slot.classList.add('closed');
+                    slot.dataset.closed = 'true';
+                }
+
+                if (events.some(e => e.heure === `${startHour}:00`)) {
+                    slot.classList.add('filled');
+                }
+
+                const quantity = hourQuantities[startHour];
+                const titleParts = [];
+                if (isClosed) {
+                    titleParts.push('Ligne fermée');
+                }
+                if (quantity !== undefined && quantity !== null && quantity !== '') {
+                    slot.dataset.quantity = quantity;
+                    titleParts.push(`Quantité: ${quantity}`);
+                }
+                if (titleParts.length) {
+                    slot.title = titleParts.join(' • ');
+                }
+
+                if (selectedTimeSlot === startHour) {
+                    slot.classList.add('active');
+                    selectionStillVisible = true;
+                }
+
+                slot.addEventListener('click', () => selectTimeSlot(startHour, slot));
+                fragment.appendChild(slot);
+            });
+
+            timeSlotsContainer.appendChild(fragment);
+            if (selectedTimeSlot != null && !hours.includes(Number(selectedTimeSlot))) {
+                selectedTimeSlot = selectionStillVisible ? selectedTimeSlot : null;
             }
-
-            const hasEvents = events.some(e => e.heure === `${startHour}:00`);
-            if (hasEvents) {
-                slot.classList.add('filled');
+            if (!selectionStillVisible) {
+                selectedTimeSlot = null;
             }
-
-            const quantity = hourQuantities[startHour];
-            const titleParts = [];
-            if (isClosed) {
-                titleParts.push('Ligne fermée');
-            }
-            if (quantity !== undefined && quantity !== null && quantity !== '') {
-                slot.dataset.quantity = quantity;
-                titleParts.push(`Quantité: ${quantity}`);
-            }
-            if (titleParts.length) {
-                slot.title = titleParts.join(' • ');
-            }
-
-            if (selectedTimeSlot === startHour) {
-                slot.classList.add('active');
-                selectionStillVisible = true;
-            }
-
-            slot.addEventListener('click', () => selectTimeSlot(startHour, slot));
-            timeSlotsContainer.appendChild(slot);
+            updateQuantityInputState();
+            updateActiveProfileMeta();
         });
-
-        if (!selectionStillVisible) {
-            selectedTimeSlot = null;
-        }
-        updateQuantityInputState();
-        updateActiveProfileMeta();
     }
 
     function selectTimeSlot(hour, slotElement) {
-        document.querySelectorAll('.time-slot').forEach(s => s.classList.remove('active'));
-        slotElement.classList.add('active');
-        selectedTimeSlot = hour;
-        updateQuantityInputState();
-        if (hourQuantityInput && !hourQuantityInput.disabled) {
-            hourQuantityInput.focus();
-        } else {
-            typeSelect.focus();
-        }
+        scheduleWork(() => {
+            document.querySelectorAll('.time-slot').forEach(s => s.classList.remove('active'));
+            slotElement.classList.add('active');
+            selectedTimeSlot = hour;
+            updateQuantityInputState();
+            if (hourQuantityInput && !hourQuantityInput.disabled) {
+                hourQuantityInput.focus();
+            } else {
+                typeSelect.focus();
+            }
+        });
     }
 
     function loadStoredLine() {
@@ -2085,6 +2500,27 @@
         headerLine.textContent = value;
     }
 
+    function loadPerformancePreferences() {
+        let storedCfg = null;
+        try {
+            storedCfg = JSON.parse(localStorage.getItem('prodtrack_cfg') || 'null');
+        } catch (err) {
+            storedCfg = null;
+        }
+        modePerformance = !!(storedCfg && storedCfg.mode_performance);
+        // PERF: adaptation du thème et des rafraîchissements automatiques
+        document.body.classList.toggle('mode-performance', modePerformance);
+        if (vgRefreshBtn) {
+            vgRefreshBtn.style.display = modePerformance ? '' : 'none';
+        }
+        if (modePerformance && typeof queueRecompute.cancel === 'function') {
+            queueRecompute.cancel();
+        }
+        if (!modePerformance) {
+            requestRecompute(true);
+        }
+    }
+
     function loadConfigFromStorage() {
         const stored = localStorage.getItem(STORAGE_KEYS.config);
         if (stored) {
@@ -2100,31 +2536,92 @@
     }
 
     function persistConfig() {
-        localStorage.setItem(STORAGE_KEYS.config, JSON.stringify(activeConfig));
+        if (!activeConfig) return;
+        try {
+            localStorage.setItem(STORAGE_KEYS.config, JSON.stringify(activeConfig));
+        } catch (e) {
+            console.warn('Persist config failed:', e);
+        }
+    }
+
+    function getAvailableTypes() {
+        if (eventConfigModel && eventConfigModel.tree && Object.keys(eventConfigModel.tree).length) {
+            return uniqueList(Object.keys(eventConfigModel.tree));
+        }
+        if (activeConfig && Array.isArray(activeConfig.types)) {
+            return uniqueList(activeConfig.types.map(t => t?.name));
+        }
+        return [];
+    }
+
+    function getCategoriesForType(typeName) {
+        if (!typeName) return [];
+        if (eventConfigModel && eventConfigModel.tree && eventConfigModel.tree[typeName]?.categories) {
+            return uniqueList(Object.keys(eventConfigModel.tree[typeName].categories));
+        }
+        const typeObj = activeConfig?.types?.find(t => t.name === typeName);
+        if (!typeObj || !Array.isArray(typeObj.categories)) return [];
+        return uniqueList(typeObj.categories.map(cat => cat?.name));
+    }
+
+    function getCausesForCategory(typeName, categoryName) {
+        if (!typeName || !categoryName) return [];
+        if (eventConfigModel && eventConfigModel.tree) {
+            const causeBucket = eventConfigModel.tree[typeName]?.categories?.[categoryName]?.causes;
+            if (causeBucket && typeof causeBucket === 'object') {
+                return uniqueList(Object.keys(causeBucket));
+            }
+        }
+        const typeObj = activeConfig?.types?.find(t => t.name === typeName);
+        const catObj = typeObj?.categories?.find(c => c.name === categoryName);
+        if (!catObj || !Array.isArray(catObj.causes)) return [];
+        return uniqueList(catObj.causes.map(cs => cs?.name));
+    }
+
+    function getDetailsForCause(typeName, categoryName, causeName) {
+        if (!typeName || !categoryName || !causeName) return [];
+        if (eventConfigModel && eventConfigModel.tree) {
+            const details = eventConfigModel.tree[typeName]?.categories?.[categoryName]?.causes?.[causeName]?.details;
+            if (Array.isArray(details) && details.length) {
+                return uniqueList(details);
+            }
+        }
+        const typeObj = activeConfig?.types?.find(t => t.name === typeName);
+        const catObj = typeObj?.categories?.find(c => c.name === categoryName);
+        const causeObj = catObj?.causes?.find(c => c.name === causeName);
+        if (!causeObj || !Array.isArray(causeObj.details)) return [];
+        return uniqueList(causeObj.details);
     }
 
     function populateTypeSelect() {
+        const previous = typeSelect.value;
+        const types = getAvailableTypes();
         typeSelect.innerHTML = '<option value="">Choisir…</option>';
-        activeConfig.types.forEach(t => {
+        types.forEach(name => {
             const option = document.createElement('option');
-            option.value = t.name;
-            option.textContent = t.name;
+            option.value = name;
+            option.textContent = name;
             typeSelect.appendChild(option);
         });
+        if (previous && types.includes(previous)) {
+            typeSelect.value = previous;
+        }
         updateCategoryOptions();
     }
 
     function updateCategoryOptions() {
         const selectedType = typeSelect.value;
+        const previous = categorySelect.value;
+        const categories = getCategoriesForType(selectedType);
         categorySelect.innerHTML = '<option value="">Choisir…</option>';
-        const typeObj = activeConfig.types.find(t => t.name === selectedType);
-        if (typeObj) {
-            typeObj.categories.forEach(cat => {
-                const opt = document.createElement('option');
-                opt.value = cat.name;
-                opt.textContent = cat.name;
-                categorySelect.appendChild(opt);
-            });
+        categories.forEach(catName => {
+            const opt = document.createElement('option');
+            opt.value = catName;
+            opt.textContent = catName;
+            categorySelect.appendChild(opt);
+        });
+        if (previous && categories.includes(previous)) {
+            categorySelect.value = previous;
         }
         updateCauseOptions();
     }
@@ -2132,16 +2629,17 @@
     function updateCauseOptions() {
         const selectedType = typeSelect.value;
         const selectedCategory = categorySelect.value;
+        const previous = causeSelect.value;
+        const causes = getCausesForCategory(selectedType, selectedCategory);
         causeSelect.innerHTML = '<option value="">Choisir…</option>';
-        const typeObj = activeConfig.types.find(t => t.name === selectedType);
-        const catObj = typeObj?.categories.find(c => c.name === selectedCategory);
-        if (catObj) {
-            catObj.causes.forEach(cs => {
-                const opt = document.createElement('option');
-                opt.value = cs.name;
-                opt.textContent = cs.name;
-                causeSelect.appendChild(opt);
-            });
+        causes.forEach(causeName => {
+            const opt = document.createElement('option');
+            opt.value = causeName;
+            opt.textContent = causeName;
+            causeSelect.appendChild(opt);
+        });
+        if (previous && causes.includes(previous)) {
+            causeSelect.value = previous;
         }
         updateDetailOptions();
     }
@@ -2150,17 +2648,19 @@
         const selectedType = typeSelect.value;
         const selectedCategory = categorySelect.value;
         const selectedCause = causeSelect.value;
+        const previous = detailSelect.value;
+        const details = getDetailsForCause(selectedType, selectedCategory, selectedCause);
+        const effectiveDetails = details.length ? details : ['*'];
         detailSelect.innerHTML = '';
-        const typeObj = activeConfig.types.find(t => t.name === selectedType);
-        const catObj = typeObj?.categories.find(c => c.name === selectedCategory);
-        const causeObj = catObj?.causes.find(c => c.name === selectedCause);
-        const details = causeObj?.details?.length ? causeObj.details : ['*'];
-        details.forEach(detail => {
+        effectiveDetails.forEach(detail => {
             const opt = document.createElement('option');
             opt.value = detail;
             opt.textContent = detail;
             detailSelect.appendChild(opt);
         });
+        if (previous && effectiveDetails.includes(previous)) {
+            detailSelect.value = previous;
+        }
     }
 
     function getRuleForSelection() {
@@ -2215,20 +2715,117 @@
             if (fieldName === 'sous_ensemble') {
                 populateSubsetOptions(inputEl, document.getElementById('equipement')?.value);
             }
+            if (fieldName === 'article') {
+                attachSuggestionList(inputEl, getEventArticles(), 'article');
+            }
+            if (fieldName === 'zone') {
+                attachSuggestionList(inputEl, getEventZones(), 'zone');
+            }
             labelSpan.appendChild(inputEl);
             dynamicFieldsContainer.appendChild(wrapper);
         });
         manageSubsetVisibility();
     }
 
-    function populateEquipmentOptions(selectEl) {
-        selectEl.innerHTML = '<option value="">Choisir…</option>';
-        activeConfig.assets.forEach(asset => {
+    function getEventEquipments() {
+        return uniqueList(eventConfigModel && Array.isArray(eventConfigModel.equips) ? eventConfigModel.equips : []);
+    }
+
+    function getEventArticles() {
+        return uniqueList(eventConfigModel && Array.isArray(eventConfigModel.articles) ? eventConfigModel.articles : []);
+    }
+
+    function getEventZones() {
+        return uniqueList(eventConfigModel && Array.isArray(eventConfigModel.zones) ? eventConfigModel.zones : []);
+    }
+
+    function attachSuggestionList(inputEl, values, fallbackId) {
+        if (!inputEl) return;
+        const listId = inputEl.id ? `${inputEl.id}-options` : `options-${fallbackId || 'list'}`;
+        let target = document.getElementById(listId);
+        if (!values || !values.length) {
+            if (target && target.parentNode) {
+                target.parentNode.removeChild(target);
+            }
+            if (inputEl.getAttribute('list') === listId) {
+                inputEl.removeAttribute('list');
+            }
+            return;
+        }
+        if (!target) {
+            target = document.createElement('datalist');
+            target.id = listId;
+            if (inputEl.parentNode) {
+                inputEl.parentNode.appendChild(target);
+            } else {
+                document.body.appendChild(target);
+            }
+        }
+        target.innerHTML = '';
+        values.forEach(value => {
             const opt = document.createElement('option');
-            opt.value = asset.code;
-            opt.textContent = `${asset.label} (${asset.code})`;
+            opt.value = value;
+            target.appendChild(opt);
+        });
+        inputEl.setAttribute('list', listId);
+    }
+
+    function refreshEventFieldSuggestions() {
+        const equipmentField = document.getElementById('equipement');
+        if (equipmentField) {
+            populateEquipmentOptions(equipmentField);
+        }
+        const articleField = document.getElementById('article');
+        if (articleField) {
+            attachSuggestionList(articleField, getEventArticles(), 'article');
+        }
+        const zoneField = document.getElementById('zone');
+        if (zoneField) {
+            attachSuggestionList(zoneField, getEventZones(), 'zone');
+        }
+    }
+
+    window.addEventListener('prodtrack:events-config', (event) => {
+        const normalized = normalizeEventConfigModel(event?.detail?.model);
+        eventConfigModel = normalized;
+        populateTypeSelect();
+        refreshEventFieldSuggestions();
+        manageSubsetVisibility();
+    });
+
+    function populateEquipmentOptions(selectEl) {
+        if (!selectEl) return;
+        const previous = selectEl.value;
+        const used = new Set();
+        selectEl.innerHTML = '<option value="">Choisir…</option>';
+        getEventEquipments().forEach(code => {
+            if (used.has(code)) return;
+            used.add(code);
+            const opt = document.createElement('option');
+            opt.value = code;
+            opt.textContent = code;
             selectEl.appendChild(opt);
         });
+        activeConfig.assets.forEach(asset => {
+            if (!asset || !asset.code) return;
+            const code = asset.code;
+            const label = asset.label ? `${asset.label} (${asset.code})` : asset.code;
+            if (used.has(code)) {
+                const existing = Array.from(selectEl.options).find(option => option.value === code);
+                if (existing) {
+                    existing.textContent = label;
+                }
+                return;
+            }
+            used.add(code);
+            const opt = document.createElement('option');
+            opt.value = code;
+            opt.textContent = label;
+            selectEl.appendChild(opt);
+        });
+        if (previous && Array.from(selectEl.options).some(option => option.value === previous)) {
+            selectEl.value = previous;
+        }
     }
 
     function populateSubsetOptions(selectEl, equipmentCode) {
@@ -2290,9 +2887,8 @@
         }
         additionHistory = events.map(event => event.id);
         renderEvents();
-        refreshSummary();
+        requestRecompute(true);
         syncSequenceCounters();
-        generateTimeSlots();
         updateSaveStatus(true);
     }
 
@@ -2434,30 +3030,36 @@
     }
 
     function renderEvents() {
-        eventTableBody.innerHTML = '';
+        if (!eventTableBody) return;
         const sortedEvents = [...events].sort((a, b) => a.debut.localeCompare(b.debut));
-        sortedEvents.forEach(event => {
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td>${event.heure}</td>
-                <td>${event.type}</td>
-                <td>${event.categorie}</td>
-                <td>${event.cause}</td>
-                <td>${event.detail}</td>
-                <td>${event.duree_min}</td>
-                <td>${formatEquipment(event)}</td>
-                <td>${event.article || '-'}</td>
-                <td>${event.lot || '-'}</td>
-                <td>${event.commentaire || '-'}</td>
-                <td>
-                    <div class="table-actions">
-                        <button type="button" class="secondary" data-edit="${event.id}">Éditer</button>
-                        <button type="button" class="danger" data-delete="${event.id}">Suppr.</button>
-                    </div>
-                </td>`;
-            eventTableBody.appendChild(tr);
+        scheduleWork(() => {
+            // PERF: rendu tabulaire via fragment pour limiter les reflows
+            eventTableBody.innerHTML = '';
+            const fragment = document.createDocumentFragment();
+            sortedEvents.forEach(event => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${event.heure}</td>
+                    <td>${event.type}</td>
+                    <td>${event.categorie}</td>
+                    <td>${event.cause}</td>
+                    <td>${event.detail}</td>
+                    <td>${event.duree_min}</td>
+                    <td>${formatEquipment(event)}</td>
+                    <td>${event.article || '-'}</td>
+                    <td>${event.lot || '-'}</td>
+                    <td>${event.commentaire || '-'}</td>
+                    <td>
+                        <div class="table-actions">
+                            <button type="button" class="secondary" data-edit="${event.id}">Éditer</button>
+                            <button type="button" class="danger" data-delete="${event.id}">Suppr.</button>
+                        </div>
+                    </td>`;
+                fragment.appendChild(tr);
+            });
+            eventTableBody.appendChild(fragment);
+            generateTimeSlots();
         });
-        generateTimeSlots();
     }
 
     function formatEquipment(event) {
@@ -2466,6 +3068,14 @@
         const eqLabel = asset ? asset.label : event.equipement;
         const subset = asset?.subsets?.find(s => s.slug === event.sous_ensemble);
         return subset ? `${eqLabel} / ${subset.label}` : eqLabel;
+    }
+
+    function recompute() {
+        recomputeQueued = false;
+        if (modePerformance && document.hidden) {
+            return;
+        }
+        refreshSummary();
     }
 
     function refreshSummary() {
@@ -2569,6 +3179,16 @@
         }
 
         updateActiveProfileMeta();
+
+        if (typeof window._ppUpdateHourTiles === 'function') {
+            try {
+                const hourForTiles = selectedTimeSlot;
+                const causes = hourForTiles ? calculateMinutesCausesForHour(hourForTiles) : 0;
+                window._ppUpdateHourTiles(hourForTiles, null, metrics, events, causes);
+            } catch (err) {
+                console.warn('Hour tiles update failed:', err);
+            }
+        }
     }
 
     function resetForm(preserveType = false) {
@@ -2590,13 +3210,17 @@
             showToast('Aucun événement à exporter.');
             return;
         }
+        flushHourWritesImmediate();
         const columns = activeConfig.export.csv_columns;
-        const lines = [columns.join(';')];
-        events.forEach(event => {
-            const row = columns.map(col => formatCsvValue(event[col] ?? ''));
-            lines.push(row.join(';'));
+        scheduleWork(() => {
+            // PERF: sérialisation CSV hors thread principal immédiat
+            const lines = [columns.join(';')];
+            events.forEach(event => {
+                const row = columns.map(col => formatCsvValue(event[col] ?? ''));
+                lines.push(row.join(';'));
+            });
+            downloadFile(lines.join('\n'), replaceTokens(activeConfig.export.filename, 'csv'), 'text/csv');
         });
-        downloadFile(lines.join('\n'), replaceTokens(activeConfig.export.filename, 'csv'), 'text/csv');
     }
 
     function formatCsvValue(value) {
@@ -2611,13 +3235,17 @@
             showToast('Aucun événement à exporter.');
             return;
         }
-        const payload = {
-            version: activeConfig.version,
-            date: currentDate,
-            line: lineInput.value.trim(),
-            events
-        };
-        downloadFile(JSON.stringify(payload, null, 2), replaceTokens(activeConfig.export.filename, 'json'), 'application/json');
+        flushHourWritesImmediate();
+        scheduleWork(() => {
+            // PERF: génération JSON différée pour éviter un blocage
+            const payload = {
+                version: activeConfig.version,
+                date: currentDate,
+                line: lineInput.value.trim(),
+                events
+            };
+            downloadFile(JSON.stringify(payload, null, 2), replaceTokens(activeConfig.export.filename, 'json'), 'application/json');
+        });
     }
 
     function replaceTokens(filenameTemplate, extension) {
@@ -2654,6 +3282,7 @@
         updateDetailOptions();
         detailSelect.value = event.detail;
         buildDynamicFields();
+        refreshEventFieldSuggestions();
         durationInput.value = event.duree_min;
         form.commentaire.value = event.commentaire || '';
         Object.keys(FIELD_DEFS).forEach(field => {
@@ -2675,9 +3304,8 @@
         additionHistory = additionHistory.filter(historyId => historyId !== id);
         saveEvents();
         renderEvents();
-        refreshSummary();
+        requestRecompute();
         syncSequenceCounters();
-        generateTimeSlots();
         showToast('Événement supprimé.');
     }
 
@@ -2688,19 +3316,25 @@
         typeSelect.addEventListener('change', () => {
             updateCategoryOptions();
             buildDynamicFields();
+            refreshEventFieldSuggestions();
             updateSaveStatus(false);
         });
         categorySelect.addEventListener('change', () => {
             updateCauseOptions();
             buildDynamicFields();
+            refreshEventFieldSuggestions();
             updateSaveStatus(false);
         });
         causeSelect.addEventListener('change', () => {
             updateDetailOptions();
             buildDynamicFields();
+            refreshEventFieldSuggestions();
             updateSaveStatus(false);
         });
-        form.addEventListener('input', () => updateSaveStatus(false));
+        form.addEventListener('input', () => {
+            updateSaveStatus(false);
+            requestRecompute();
+        });
         dynamicFieldsContainer.addEventListener('change', (e) => {
             if (e.target.id === 'equipement') {
                 populateSubsetOptions(document.getElementById('sous_ensemble'), e.target.value);
@@ -2716,10 +3350,9 @@
                 }
                 const rawValue = hourQuantityInput.value;
                 if (rawValue === '') {
-                    delete hourQuantities[selectedTimeSlot];
-                    saveHourQuantities();
+                    queueHourPersist(selectedTimeSlot, null);
                     updateSlotQuantityIndicator(selectedTimeSlot);
-                    refreshSummary();
+                    requestRecompute();
                     return;
                 }
                 const numeric = Number(rawValue);
@@ -2728,11 +3361,13 @@
                     hourQuantityInput.value = hourQuantities[selectedTimeSlot] ?? '';
                     return;
                 }
-                hourQuantities[selectedTimeSlot] = numeric;
-                saveHourQuantities();
+                queueHourPersist(selectedTimeSlot, numeric);
                 updateSlotQuantityIndicator(selectedTimeSlot);
-                refreshSummary();
+                requestRecompute();
             });
+        }
+        if (vgRefreshBtn) {
+            vgRefreshBtn.addEventListener('click', () => requestRecompute(true));
         }
         if (teamSelect) {
             teamSelect.addEventListener('change', () => {
@@ -2756,7 +3391,7 @@
                 saveClosures();
                 renderClosures();
                 generateTimeSlots();
-                refreshSummary();
+                requestRecompute();
                 updateQuantityInputState();
                 showToast('Période de fermeture supprimée.');
             });
@@ -2774,9 +3409,8 @@
                 }
                 saveEvents();
                 renderEvents();
-                refreshSummary();
+                requestRecompute();
                 syncSequenceCounters();
-                generateTimeSlots();
                 updateQuantityInputState();
                 showToast(editingId ? 'Événement mis à jour.' : 'Événement ajouté.');
                 editingId = null;
@@ -2784,6 +3418,7 @@
                 form.reset();
                 durationInput.value = '';
                 buildDynamicFields();
+                refreshEventFieldSuggestions();
                 updateQuantityInputState();
                 typeSelect.focus();
             } catch (err) {
@@ -2811,18 +3446,19 @@
                 }
                 saveEvents();
                 renderEvents();
-                refreshSummary();
+                requestRecompute();
                 syncSequenceCounters();
-                generateTimeSlots();
                 updateQuantityInputState();
                 showToast('Dernière saisie annulée.');
             });
         }
         lineInput.addEventListener('change', () => {
+            flushHourWritesImmediate(); // PERF: garantir la persistance avant changement de ligne
             storeLine(lineInput.value.trim());
             form.reset();
             durationInput.value = '';
             buildDynamicFields();
+            refreshEventFieldSuggestions();
             editingId = null;
             submitBtn.textContent = 'Ajouter';
             selectedTimeSlot = null;
@@ -2850,6 +3486,7 @@
         
         newDayBtn.addEventListener('click', () => {
             if (confirm('Créer une nouvelle journée ?')) {
+                flushHourWritesImmediate();
                 events = [];
                 additionHistory = [];
                 hourQuantities = {};
@@ -2860,8 +3497,7 @@
                 saveClosures();
                 renderEvents();
                 renderClosures();
-                refreshSummary();
-                generateTimeSlots();
+                requestRecompute(true);
                 updateQuantityInputState();
                 showToast('Nouvelle journée créée.');
             }
@@ -2900,6 +3536,7 @@
                 persistConfig();
                 populateTypeSelect();
                 buildDynamicFields();
+                refreshEventFieldSuggestions();
                 updateActiveProfileMeta();
                 showToast('Configuration chargée.');
             } catch (err) {
@@ -2911,13 +3548,46 @@
         event.target.value = '';
     }
 
+    window.__pt = window.__pt || {};
+    // PERF: helper console pour mesurer un scénario d'édition massif
+    window.__pt.testPerf = function () {
+        try {
+            const sampleHour = selectedTimeSlot || '08';
+            const previous = hourQuantities.hasOwnProperty(sampleHour) ? hourQuantities[sampleHour] : undefined;
+            const start = performance.now();
+            for (let i = 0; i < 50; i += 1) {
+                queueHourPersist(sampleHour, i);
+            }
+            flushHourWritesImmediate();
+            requestRecompute(true);
+            const elapsed = performance.now() - start;
+            if (previous === undefined) {
+                queueHourPersist(sampleHour, null);
+            } else {
+                queueHourPersist(sampleHour, previous);
+            }
+            flushHourWritesImmediate();
+            requestRecompute(true);
+            return {
+                durationMs: Math.round(elapsed * 100) / 100,
+                hour: sampleHour,
+                modePerformance,
+                writesFlushed: true
+            };
+        } catch (err) {
+            return { error: err?.message || String(err) };
+        }
+    };
+
     function initialize() {
         loadSidebarState();
         loadStoredLine();
+        loadPerformancePreferences();
         loadConfigFromStorage();
         persistConfig();
         populateTypeSelect();
         buildDynamicFields();
+        refreshEventFieldSuggestions();
         populateTeamSelect();
         loadHourQuantities();
         loadClosuresFromStorage();
@@ -2928,11 +3598,2197 @@
         updateQuantityInputState();
         updateClock();
         setInterval(updateClock, 1000);
+        requestRecompute(true);
         typeSelect.focus();
     }
 
     initialize();
+    window.addEventListener('params:changed', loadPerformancePreferences);
+
+    const visibilityRefresh = debounce(() => {
+        // PERF: synchronisation ponctuelle après retour d'onglet
+        if (!document.hidden) {
+            requestRecompute(true);
+        }
+    }, 200);
+
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) {
+            loadPerformancePreferences();
+        }
+        visibilityRefresh();
+    });
+
+    window.addEventListener('beforeunload', () => {
+        flushHourWritesImmediate();
+    });
 })();
 </script>
+
+<script>
+(function(){
+  if (window._ppUpdateHourTiles) return;
+
+  function toNumber(value) {
+    if (value === null || value === undefined || value === '') return NaN;
+    var numeric = Number(value);
+    if (Number.isFinite(numeric)) return numeric;
+    var parsed = parseFloat(String(value).replace(',', '.'));
+    return Number.isFinite(parsed) ? parsed : NaN;
+  }
+
+  function parseMinutesText(text) {
+    if (!text) return NaN;
+    var cleaned = String(text).replace(/[^0-9,.-]/g, '').replace(',', '.');
+    if (!cleaned) return NaN;
+    var parsed = parseFloat(cleaned);
+    return Number.isFinite(parsed) ? parsed : NaN;
+  }
+
+  function ensureHour(hour) {
+    if (hour === null || hour === undefined) return null;
+    var str = String(hour).trim();
+    if (!str) return null;
+    if (/^\d{2}$/.test(str)) return str;
+    if (/^\d$/.test(str)) return ('0' + str);
+    if (/^\d{2}:\d{2}$/.test(str)) return str.slice(0, 2);
+    return str.length >= 2 ? str.slice(0, 2) : null;
+  }
+
+  function isStopEvent(event) {
+    if (!event) return false;
+    var label = ((event.type || '') + ' ' + (event.categorie || event.cat || '')).toLowerCase();
+    return /arr|arret|arrêt|panne|stop|downtime/.test(label);
+  }
+
+  function collectDuration(event) {
+    if (!event) return 0;
+    var val = toNumber(event.duree_min ?? event.duration ?? event.minutes ?? event.durqty);
+    return Number.isFinite(val) ? val : 0;
+  }
+
+  window._ppUpdateHourTiles = function(selectedHour, minutesAjust, metrics, eventList, minutesCauses) {
+    try {
+      var shMin = document.getElementById('sh-min-total');
+      var shCause = document.getElementById('sh-top-cause');
+      var shStatus = document.getElementById('sh-status');
+      var shRemaining = document.getElementById('sh-remaining');
+      var shWindow = document.getElementById('sh-window');
+      var vgStatus = document.getElementById('vg-status');
+      var vgMsg = document.getElementById('vg-msg');
+
+      if (!shMin && !shCause && !shStatus && !shRemaining && !shWindow && !vgStatus && !vgMsg) {
+        return;
+      }
+
+      var hourStr = ensureHour(selectedHour);
+      var events = Array.isArray(eventList) ? eventList : [];
+      var hourEvents = hourStr
+        ? events.filter(function(evt){
+            var h = evt && evt.heure ? String(evt.heure).slice(0, 2) : '';
+            return h === hourStr;
+          })
+        : [];
+
+      var stopMinutes = toNumber(minutesCauses);
+      if (!Number.isFinite(stopMinutes)) {
+        stopMinutes = hourEvents.reduce(function(total, evt){
+          if (!isStopEvent(evt)) return total;
+          return total + collectDuration(evt);
+        }, 0);
+      }
+      if (!Number.isFinite(stopMinutes)) {
+        stopMinutes = 0;
+      }
+
+      var adjustMinutes = toNumber(minutesAjust);
+      if (!Number.isFinite(adjustMinutes)) {
+        var ajustEl = document.getElementById('profileMinutesAjust');
+        adjustMinutes = parseMinutesText(ajustEl && ajustEl.textContent);
+      }
+      if (!Number.isFinite(adjustMinutes)) {
+        var resteEl = document.getElementById('profileMinutesReste');
+        var resteValue = parseMinutesText(resteEl && resteEl.textContent);
+        if (Number.isFinite(resteValue)) {
+          adjustMinutes = resteValue + stopMinutes;
+        }
+      }
+      if (!Number.isFinite(adjustMinutes)) {
+        adjustMinutes = stopMinutes;
+      }
+
+      var remaining = Math.max(0, adjustMinutes - stopMinutes);
+      var tolerance = metrics && (metrics.minutesTolerance ?? metrics.minutes_tolerance);
+      tolerance = toNumber(tolerance);
+      if (!Number.isFinite(tolerance) || tolerance < 0) {
+        tolerance = 0;
+      }
+
+      var topCause = '—';
+      if (hourEvents.length) {
+        var totals = new Map();
+        hourEvents.forEach(function(evt){
+          var key = (evt && (evt.cause || evt.cause5m || evt.categorie || evt.type)) || '—';
+          var duration = collectDuration(evt);
+          totals.set(key, (totals.get(key) || 0) + duration);
+        });
+        var best = '—';
+        var max = -1;
+        totals.forEach(function(total, key){
+          if (total > max && key) {
+            max = total;
+            best = key;
+          }
+        });
+        topCause = best;
+      }
+
+      var roundedStops = Math.round(stopMinutes);
+      var roundedRemaining = Math.max(0, Math.round(remaining));
+      var withinTolerance = remaining <= tolerance + 0.049;
+
+      if (shMin) {
+        shMin.textContent = roundedStops + ' min';
+      }
+      if (shCause) {
+        shCause.textContent = hourEvents.length ? topCause : '—';
+      }
+      if (shRemaining) {
+        shRemaining.textContent = roundedRemaining + ' min à répartir';
+      }
+      if (shWindow) {
+        if (hourStr) {
+          var nextHour = String((Number(hourStr) + 1) % 24).padStart(2, '0');
+          shWindow.textContent = 'Fenêtre: ' + hourStr + ':00–' + nextHour + ':00';
+        } else {
+          shWindow.textContent = 'Fenêtre: —:—–—:—';
+        }
+      }
+
+      if (shStatus) {
+        shStatus.textContent = withinTolerance ? 'OK' : 'À équilibrer';
+        shStatus.style.color = withinTolerance ? '#4ade80' : '#f59e0b';
+      }
+      if (vgStatus) {
+        vgStatus.textContent = withinTolerance ? 'Prête' : 'À compléter';
+        vgStatus.style.color = withinTolerance ? '#4ade80' : '#f59e0b';
+      }
+      if (vgMsg) {
+        vgMsg.textContent = withinTolerance ? 'Delta équilibré' : 'Compléter les champs / minutes';
+      }
+    } catch (err) {
+      console.warn('Hour tiles sync failed:', err);
+    }
+  };
+})();
+</script>
+
+<script>
+(function(){
+  try{
+    function pick(arr){
+      for(var i=0;i<arr.length;i++){
+        var el=document.querySelector(arr[i]);
+        if(el) return el;
+      }
+      return null;
+    }
+
+    var mainView  = pick(['[data-app-root]','main','#content','.content','.page','.page-container']) || document.body;
+    var pageHisto = document.getElementById('page-histo');
+    var pageParams = document.getElementById('page-params');
+
+    Array.from(document.querySelectorAll('.sidebar *, nav *')).forEach(function(el){
+      try{
+        var t = (el.textContent || '').trim();
+        if (t === 'Paramètres' && !/Paramétrage/i.test(t)) {
+          var node = el.closest('li, a, button') || el;
+          if (node && node.parentNode) {
+            node.parentNode.removeChild(node);
+          }
+        }
+      }catch(e){}
+    });
+
+    var links = {
+      saisie: document.getElementById('nav-saisie-link'),
+      histo: document.getElementById('nav-histo-link'),
+      params: document.getElementById('nav-params-link')
+    };
+
+    var routes = {
+      saisie: mainView,
+      histo: pageHisto,
+      params: pageParams
+    };
+
+    function hide(el){
+      if(el && el !== document.body){
+        el.style.display='none';
+      }
+    }
+
+    function show(el){
+      if(el && el !== document.body){
+        el.style.display='';
+      }
+    }
+
+    var knownViews = [];
+    Object.keys(routes).forEach(function(key){
+      var view = routes[key];
+      if(view && knownViews.indexOf(view) === -1){
+        knownViews.push(view);
+      }
+    });
+
+    var historyStack = ['saisie'];
+    var currentRoute = 'saisie';
+
+    function setActive(link){
+      var activeClass = 'active';
+      var baseLink = link || links.saisie || links.histo || links.params;
+      var menuRoot = (baseLink && baseLink.closest && baseLink.closest('nav, .sidebar')) || document;
+      var currentActive = menuRoot.querySelectorAll('.'+activeClass);
+      for(var i=0;i<currentActive.length;i++){
+        currentActive[i].classList.remove(activeClass);
+      }
+      if(link && link.classList && typeof link.classList.add === 'function'){
+        link.classList.add(activeClass);
+      }
+    }
+
+    function navigate(to, options){
+      if(!routes[to]){
+        to = 'saisie';
+      }
+      var target = routes[to] || mainView;
+      if(!target) return;
+
+      for(var i=0;i<knownViews.length;i++){
+        var view = knownViews[i];
+        if(view !== target){
+          hide(view);
+        }
+      }
+      show(target);
+
+      currentRoute = to;
+
+      if(!options || !options.replace){
+        var lastRoute = historyStack[historyStack.length-1];
+        if(lastRoute !== to){
+          historyStack.push(to);
+        }
+      }
+
+      setActive(links[to] || null);
+    }
+
+    function goBack(){
+      if(historyStack.length > 1){
+        historyStack.pop();
+        var previousRoute = historyStack[historyStack.length-1] || 'saisie';
+        navigate(previousRoute, { replace: true });
+      } else {
+        navigate('saisie', { replace: true });
+      }
+    }
+
+    if(links.saisie){
+      links.saisie.addEventListener('click', function(e){
+        e.preventDefault();
+        navigate('saisie');
+      });
+    }
+
+    if(links.histo){
+      links.histo.addEventListener('click', function(e){
+        e.preventDefault();
+        navigate('histo');
+      });
+    }
+
+    if(links.params){
+      links.params.addEventListener('click', function(e){
+        e.preventDefault();
+        navigate('params');
+      });
+    }
+
+    var backH = document.getElementById('btn-back-from-histo');
+    if(backH){
+      backH.addEventListener('click', function(){
+        goBack();
+      });
+    }
+
+    var backP = document.getElementById('btn-back-from-params');
+    if(backP){
+      backP.addEventListener('click', function(){
+        goBack();
+      });
+    }
+
+    if(pageHisto) hide(pageHisto);
+    if(pageParams) hide(pageParams);
+    navigate('saisie', { replace: true });
+
+  }catch(err){
+    console.warn('Nav SPA init skipped:', err);
+  }
+})();
+</script>
+<script>
+(function(){
+  try{
+    var $ = function(sel, scope){ return (scope || document).querySelector(sel); };
+    var qa = function(sel, scope){ return Array.from((scope || document).querySelectorAll(sel)); };
+    var box = document.getElementById('cfg-teams');
+    if(!box) return;
+
+    var list = document.getElementById('tm-list');
+    var tpl = document.getElementById('tm-item-tpl');
+    var addBtn = document.getElementById('tm-add');
+    var msg = document.getElementById('tm-msg');
+    if(!list || !tpl) return;
+
+    var STORAGE_KEY = 'prodtrack_teams';
+
+    function ensureId(base, used){
+      var raw = base == null ? '' : String(base);
+      raw = raw.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+      if(!raw) raw = 'team';
+      var candidate = raw;
+      var index = 2;
+      while(used.has(candidate)){
+        candidate = raw + '-' + index;
+        index += 1;
+      }
+      used.add(candidate);
+      return candidate;
+    }
+
+    function normalizeTime(value){
+      if(typeof value !== 'string') return '';
+      var trimmed = value.trim();
+      if(!/^\d{2}:\d{2}$/.test(trimmed)) return '';
+      var parts = trimmed.split(':');
+      var hours = parseInt(parts[0], 10);
+      var minutes = parseInt(parts[1], 10);
+      if(hours > 23 || minutes > 59) return '';
+      return String(hours).padStart(2, '0') + ':' + String(minutes).padStart(2, '0');
+    }
+
+    function sanitizeTeams(items){
+      var used = new Set();
+      return (items || []).map(function(entry){
+        entry = entry || {};
+        var name = typeof entry.name === 'string' ? entry.name.trim() : '';
+        var code = typeof entry.code === 'string' ? entry.code.trim() : '';
+        var start = normalizeTime(entry.start);
+        var end = normalizeTime(entry.end);
+        var idSource = entry.id != null ? entry.id : (code || name);
+        var id = ensureId(idSource, used);
+        return { id: id, name: name, code: code, start: start, end: end };
+      });
+    }
+
+    function loadTeams(){
+      try{
+        var raw = localStorage.getItem(STORAGE_KEY);
+        if(!raw) return [];
+        var parsed = JSON.parse(raw);
+        if(Array.isArray(parsed)){
+          return sanitizeTeams(parsed);
+        }
+      }catch(err){
+        console.warn('cfg-teams load failed:', err);
+      }
+      return [];
+    }
+
+    function saveTeams(arr){
+      try{
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(arr));
+      }catch(err){
+        console.warn('cfg-teams save failed:', err);
+      }
+    }
+
+    function renderTeams(arr){
+      list.innerHTML = '';
+      (arr || []).forEach(function(team){
+        var fragment = document.importNode(tpl.content, true);
+        var card = fragment.querySelector('.tm-item');
+        if(!card) return;
+        card.dataset.teamId = team.id || '';
+        var nameInput = card.querySelector('.tm-name');
+        if(nameInput) nameInput.value = team.name || '';
+        var codeInput = card.querySelector('.tm-code');
+        if(codeInput) codeInput.value = team.code || '';
+        var startInput = card.querySelector('.tm-start');
+        if(startInput) startInput.value = team.start || '';
+        var endInput = card.querySelector('.tm-end');
+        if(endInput) endInput.value = team.end || '';
+        list.appendChild(fragment);
+      });
+    }
+
+    function collectTeamsFromUI(){
+      var cards = qa('.tm-item', list);
+      var raw = cards.map(function(card){
+        var val = function(sel){
+          var el = card.querySelector(sel);
+          return el ? el.value : '';
+        };
+        return {
+          id: card.dataset.teamId,
+          name: (val('.tm-name') || '').trim(),
+          code: (val('.tm-code') || '').trim(),
+          start: val('.tm-start'),
+          end: val('.tm-end')
+        };
+      });
+      var sanitized = sanitizeTeams(raw);
+      sanitized.forEach(function(team, index){
+        var card = cards[index];
+        if(card){
+          card.dataset.teamId = team.id;
+        }
+      });
+      return sanitized;
+    }
+
+    function toMinutes(time){
+      if(!/^\d{2}:\d{2}$/.test(time || '')) return NaN;
+      var parts = time.split(':');
+      return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+    }
+
+    function computeSpan(start, end){
+      var a = toMinutes(start);
+      var b = toMinutes(end);
+      if(isNaN(a) || isNaN(b)) return null;
+      if(b <= a) b += 1440;
+      return { a: a, b: b };
+    }
+
+    function spansOverlap(s1, s2){
+      if(!s1 || !s2) return false;
+      var combos1 = [s1, { a: s1.a + 1440, b: s1.b + 1440 }];
+      var combos2 = [s2, { a: s2.a + 1440, b: s2.b + 1440 }];
+      for(var i=0;i<combos1.length;i++){
+        for(var j=0;j<combos2.length;j++){
+          var left = Math.max(combos1[i].a, combos2[j].a);
+          var right = Math.min(combos1[i].b, combos2[j].b);
+          if(left < right) return true;
+        }
+      }
+      return false;
+    }
+
+    function validateTeams(data){
+      var arr = Array.isArray(data) ? data : [];
+      var errors = [];
+      var warnings = [];
+      var codeSet = new Set();
+      arr.forEach(function(team, index){
+        var row = index + 1;
+        if(!team.name) errors.push('Nom manquant ligne ' + row);
+        if(!team.code) errors.push('Code manquant ligne ' + row);
+        var codeKey = team.code ? team.code.toLowerCase() : '';
+        if(codeKey){
+          if(codeSet.has(codeKey)){
+            errors.push('Code en double ligne ' + row);
+          } else {
+            codeSet.add(codeKey);
+          }
+        }
+        if(!/^\d{2}:\d{2}$/.test(team.start || '')) errors.push('Début invalide ligne ' + row);
+        if(!/^\d{2}:\d{2}$/.test(team.end || '')) errors.push('Fin invalide ligne ' + row);
+      });
+
+      for(var i=0;i<arr.length;i++){
+        for(var j=i+1;j<arr.length;j++){
+          var span1 = computeSpan(arr[i].start, arr[i].end);
+          var span2 = computeSpan(arr[j].start, arr[j].end);
+          if(span1 && span2 && spansOverlap(span1, span2)){
+            var nameA = arr[i].name || arr[i].code || ('Équipe ' + (i+1));
+            var nameB = arr[j].name || arr[j].code || ('Équipe ' + (j+1));
+            warnings.push('Chevauchement entre "' + nameA + '" et "' + nameB + '"');
+          }
+        }
+      }
+
+      return { errors: errors, warnings: warnings };
+    }
+
+    function updateMessageState(data){
+      if(!msg) return;
+      var arr = Array.isArray(data) ? data : [];
+      var check = validateTeams(arr);
+      if(check.errors.length){
+        msg.textContent = 'À corriger: ' + check.errors.join(' · ');
+      } else if(check.warnings.length){
+        msg.textContent = 'Chevauchement: ' + check.warnings.join(' · ');
+      } else if(arr.length){
+        msg.textContent = 'OK';
+      } else {
+        msg.textContent = 'Aucune équipe configurée';
+      }
+    }
+
+    function propagate(data){
+      var selects = document.querySelectorAll('#filtre-equipe, [data-team-select]');
+      if(!selects.length) return;
+      selects.forEach(function(sel){
+        var previous = sel.value;
+        if(sel.dataset.teamPlaceholderText == null){
+          var placeholderNode = sel.querySelector('option[value=""]') || sel.querySelector('option');
+          sel.dataset.teamPlaceholderText = placeholderNode ? placeholderNode.textContent : 'Sélectionner';
+        }
+        var placeholderText = sel.dataset.teamPlaceholderText || 'Sélectionner';
+        sel.innerHTML = '';
+        var placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = placeholderText;
+        sel.appendChild(placeholder);
+        (data || []).forEach(function(team){
+          if(!team || !team.name) return;
+          var value = team.code || team.id;
+          if(!value) return;
+          var opt = document.createElement('option');
+          opt.value = value;
+          opt.textContent = team.name;
+          sel.appendChild(opt);
+        });
+        if(previous && sel.querySelector('option[value="' + previous + '"]')){
+          sel.value = previous;
+        }
+      });
+    }
+
+    function persist(){
+      var data = collectTeamsFromUI();
+      saveTeams(data);
+      propagate(data);
+      updateMessageState(data);
+    }
+
+    var initial = loadTeams();
+    if(!initial.length){
+      initial = sanitizeTeams([
+        { id: 'team-a', name: 'Équipe A', code: 'A', start: '06:00', end: '14:00' },
+        { id: 'team-b', name: 'Équipe B', code: 'B', start: '14:00', end: '22:00' },
+        { id: 'team-c', name: 'Équipe C', code: 'C', start: '22:00', end: '06:00' }
+      ]);
+      saveTeams(initial);
+    }
+
+    renderTeams(initial);
+    saveTeams(initial);
+    propagate(initial);
+    updateMessageState(initial);
+
+    list.addEventListener('input', function(evt){
+      if(evt && evt.target && evt.target.matches('input')){
+        persist();
+      }
+    });
+
+    list.addEventListener('change', function(evt){
+      if(evt && evt.target && evt.target.matches('input')){
+        persist();
+      }
+    });
+
+    list.addEventListener('click', function(evt){
+      var target = evt && evt.target;
+      if(!target) return;
+      if(target.classList.contains('tm-del')){
+        var cardDel = target.closest('.tm-item');
+        if(cardDel){
+          cardDel.remove();
+          persist();
+        }
+      } else if(target.classList.contains('tm-up')){
+        var cardUp = target.closest('.tm-item');
+        if(cardUp){
+          var prev = cardUp.previousElementSibling;
+          if(prev){
+            list.insertBefore(cardUp, prev);
+            persist();
+          }
+        }
+      } else if(target.classList.contains('tm-down')){
+        var cardDown = target.closest('.tm-item');
+        if(cardDown){
+          var next = cardDown.nextElementSibling;
+          if(next){
+            list.insertBefore(cardDown, next.nextElementSibling);
+          } else {
+            list.appendChild(cardDown);
+          }
+          persist();
+        }
+      }
+    });
+
+    if(addBtn){
+      addBtn.addEventListener('click', function(){
+        var fragment = document.importNode(tpl.content, true);
+        var card = fragment.querySelector('.tm-item');
+        if(card){
+          var used = new Set(qa('.tm-item', list).map(function(item){ return item.dataset.teamId || ''; }).filter(Boolean));
+          card.dataset.teamId = ensureId('team', used);
+        }
+        list.appendChild(fragment);
+        persist();
+        if(card){
+          var focusInput = card.querySelector('.tm-name');
+          if(focusInput && typeof focusInput.focus === 'function'){ focusInput.focus(); }
+        }
+      });
+    }
+
+  }catch(err){
+    console.warn('cfg-teams init skipped:', err);
+  }
+})();
+</script>
+<script>
+(function(){
+  try{
+    var $ = function(sel, ctx){ return (ctx || document).querySelector(sel); };
+    var qa = function(sel, ctx){ return Array.from((ctx || document).querySelectorAll(sel)); };
+    var box = document.getElementById('cfg-profiles');
+    if(!box) return;
+    var list = document.getElementById('pf-list');
+    var addBtn = document.getElementById('pf-add');
+    var tpl = document.getElementById('pf-item-tpl');
+    if(!list || !tpl) return;
+
+    var STORAGE_KEY = 'prodtrack_profiles';
+
+    function ensureId(base, used){
+      var raw = (base == null ? '' : String(base)).toLowerCase();
+      raw = raw.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+      if(!raw) raw = 'profil';
+      var candidate = raw;
+      var index = 2;
+      while(used.has(candidate)){
+        candidate = raw + '-' + index;
+        index += 1;
+      }
+      used.add(candidate);
+      return candidate;
+    }
+
+    function clampRange(value, min, max){
+      if(value == null || value === '') return null;
+      var num = parseFloat(String(value).replace(',', '.'));
+      if(!isFinite(num)) return null;
+      if(typeof min === 'number' && num < min) num = min;
+      if(typeof max === 'number' && num > max) num = max;
+      return num;
+    }
+
+    function sanitizeProfiles(items){
+      var used = new Set();
+      return (items || []).map(function(p){
+        p = p || {};
+        var name = typeof p.name === 'string' ? p.name.trim() : '';
+        var idSource = p.id != null ? p.id : name;
+        var id = ensureId(idSource, used);
+        return {
+          id: id,
+          name: name,
+          cadence: clampRange(p.cadence, 0, null),
+          qual: clampRange(p.qual, 0, 100),
+          disp: clampRange(p.disp, 0, 100),
+          oee: clampRange(p.oee, 0, 100)
+        };
+      });
+    }
+
+    function loadProfiles(){
+      try{
+        var raw = localStorage.getItem(STORAGE_KEY);
+        if(!raw) return [];
+        var parsed = JSON.parse(raw);
+        if(Array.isArray(parsed)){
+          return sanitizeProfiles(parsed);
+        }
+      }catch(err){
+        console.warn('cfg-profiles load failed:', err);
+      }
+      return [];
+    }
+
+    function saveProfiles(arr){
+      try{
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(arr));
+      }catch(err){
+        console.warn('cfg-profiles save failed:', err);
+      }
+    }
+
+    function renderProfiles(arr){
+      list.innerHTML = '';
+      (arr || []).forEach(function(profile){
+        var fragment = document.importNode(tpl.content, true);
+        var card = fragment.querySelector('.pf-item');
+        if(!card) return;
+        card.dataset.id = profile.id || '';
+        var nameInput = card.querySelector('.pf-name');
+        if(nameInput) nameInput.value = profile.name || '';
+        var cadInput = card.querySelector('.pf-cad');
+        if(cadInput) cadInput.value = profile.cadence != null ? profile.cadence : '';
+        var qualInput = card.querySelector('.pf-qual');
+        if(qualInput) qualInput.value = profile.qual != null ? profile.qual : '';
+        var dispInput = card.querySelector('.pf-disp');
+        if(dispInput) dispInput.value = profile.disp != null ? profile.disp : '';
+        var oeeInput = card.querySelector('.pf-oee');
+        if(oeeInput) oeeInput.value = profile.oee != null ? profile.oee : '';
+        list.appendChild(fragment);
+      });
+    }
+
+    function collectProfilesFromUI(){
+      var cards = qa('.pf-item', list);
+      var raw = cards.map(function(card){
+        var val = function(sel){
+          var el = card.querySelector(sel);
+          return el ? el.value : '';
+        };
+        return {
+          id: card.dataset.id,
+          name: (val('.pf-name') || '').trim(),
+          cadence: val('.pf-cad'),
+          qual: val('.pf-qual'),
+          disp: val('.pf-disp'),
+          oee: val('.pf-oee')
+        };
+      });
+      var sanitized = sanitizeProfiles(raw);
+      sanitized.forEach(function(profile, index){
+        var card = cards[index];
+        if(card){
+          card.dataset.id = profile.id;
+        }
+      });
+      return sanitized;
+    }
+
+    function pushToProfilActifSelect(arr){
+      var sel = document.getElementById('profil-actif');
+      if(!sel) return;
+      var previous = sel.value;
+      var placeholder = sel.querySelector('option[value=""]');
+      var placeholderText = placeholder ? placeholder.textContent : 'Sélectionner un profil';
+      sel.innerHTML = '';
+      if(!placeholder){
+        placeholder = document.createElement('option');
+        placeholder.value = '';
+      }
+      placeholder.textContent = placeholderText;
+      sel.appendChild(placeholder);
+      (arr || []).forEach(function(profile){
+        if(!profile || !profile.name) return;
+        var opt = document.createElement('option');
+        opt.value = profile.id || profile.name;
+        opt.textContent = profile.name;
+        opt.dataset.profileOption = '1';
+        sel.appendChild(opt);
+      });
+      if(previous && sel.querySelector('option[value="'+previous+'"])')){
+        sel.value = previous;
+      }
+    }
+
+    function persistAndPropagate(){
+      var data = collectProfilesFromUI();
+      saveProfiles(data);
+      pushToProfilActifSelect(data);
+    }
+
+    var initial = loadProfiles();
+    if(!initial.length){
+      initial = sanitizeProfiles([
+        { id: 'jour-standard', name: 'Jour – Standard', cadence: 16000, qual: 98, disp: 92, oee: 85 },
+        { id: 'soir-haute', name: 'Soir – Haute cadence', cadence: 16500, qual: 97.5, disp: 90, oee: 83 },
+        { id: 'nuit-maint', name: 'Nuit – Maintenance', cadence: 15000, qual: 98.5, disp: 94, oee: 80 }
+      ]);
+    }
+
+    renderProfiles(initial);
+    saveProfiles(initial);
+    pushToProfilActifSelect(initial);
+
+    list.addEventListener('input', function(evt){
+      if(evt && evt.target && evt.target.matches('input')){
+        persistAndPropagate();
+      }
+    });
+
+    list.addEventListener('change', function(evt){
+      if(evt && evt.target && evt.target.matches('input')){
+        persistAndPropagate();
+      }
+    });
+
+    list.addEventListener('click', function(evt){
+      var target = evt.target;
+      if(!target) return;
+      if(target.classList.contains('pf-del')){
+        var cardDel = target.closest('.pf-item');
+        if(cardDel){
+          cardDel.remove();
+          persistAndPropagate();
+        }
+      } else if(target.classList.contains('pf-up')){
+        var cardUp = target.closest('.pf-item');
+        if(cardUp){
+          var prev = cardUp.previousElementSibling;
+          if(prev){
+            list.insertBefore(cardUp, prev);
+            persistAndPropagate();
+          }
+        }
+      } else if(target.classList.contains('pf-down')){
+        var cardDown = target.closest('.pf-item');
+        if(cardDown){
+          var next = cardDown.nextElementSibling;
+          if(next){
+            list.insertBefore(cardDown, next.nextElementSibling);
+            persistAndPropagate();
+          }
+        }
+      }
+    });
+
+    if(addBtn){
+      addBtn.addEventListener('click', function(){
+        var fragment = document.importNode(tpl.content, true);
+        var card = fragment.querySelector('.pf-item');
+        if(card){
+          var used = new Set(qa('.pf-item', list).map(function(el){ return (el.dataset.id || '').trim(); }));
+          card.dataset.id = ensureId('profil', used);
+        }
+        list.appendChild(fragment);
+        persistAndPropagate();
+        var newest = list.lastElementChild;
+        if(newest){
+          var focusInput = newest.querySelector('.pf-name');
+          if(focusInput && typeof focusInput.focus === 'function'){ focusInput.focus(); }
+        }
+      });
+    }
+
+  }catch(err){
+    console.warn('cfg-profiles init skipped:', err);
+  }
+})();
+</script>
+<script>
+(function(){
+  try{
+    var byId = function(id){ return document.getElementById(id); };
+    var box = byId('cfg-ligne-save');
+    if(!box) return;
+
+    var line = byId('cfg-line');
+    var pathR = byId('cfg-path-report');
+    var pathL = byId('cfg-path-live');
+    var modePerf = byId('cfg-mode-performance');
+    var saveBtn = byId('cfg-save');
+    var resetBtn = byId('cfg-reset');
+    var msg = byId('cfg-msg');
+
+    var KEY = 'prodtrack_cfg';
+
+    function looksLikePath(val){
+      if(!val) return false;
+      var s = String(val).trim();
+      return /^https?:\/\//i.test(s) || /[\\\/]/.test(s);
+    }
+
+    function setMessage(text){
+      if(msg) msg.textContent = text || '';
+    }
+
+    function load(){
+      try{
+        var raw = localStorage.getItem(KEY);
+        if(!raw) return;
+        var data = JSON.parse(raw);
+        if(line && data.line) line.value = data.line;
+        if(pathR && data.path_report) pathR.value = data.path_report;
+        if(pathL && data.path_live) pathL.value = data.path_live;
+        if(modePerf) modePerf.checked = !!data.mode_performance;
+        setMessage('');
+      }catch(e){
+        setMessage('Erreur chargement');
+      }
+    }
+
+    function saveCfg(){
+      var data = {
+        line: line && line.value ? line.value.trim() : '',
+        path_report: pathR && pathR.value ? pathR.value.trim() : '',
+        path_live: pathL && pathL.value ? pathL.value.trim() : '',
+        mode_performance: modePerf ? !!modePerf.checked : false
+      };
+
+      var errs = [];
+      if(!data.line) errs.push('ligne');
+      if(data.path_report && !looksLikePath(data.path_report)) errs.push('lien rapport');
+      if(data.path_live && !looksLikePath(data.path_live)) errs.push('lien fichier en cours');
+
+      if(errs.length){
+        setMessage('Vérifier: ' + errs.join(', '));
+        return;
+      }
+
+      try{
+        localStorage.setItem(KEY, JSON.stringify(data));
+        setMessage('Enregistré');
+        emitChanged('line-save');
+      }catch(e){
+        setMessage('Erreur stockage');
+      }
+    }
+
+    function resetCfg(){
+      try{ localStorage.removeItem(KEY); }catch(e){}
+      if(line) line.value = '';
+      if(pathR) pathR.value = '';
+      if(pathL) pathL.value = '';
+      if(modePerf) modePerf.checked = false;
+      setMessage('Réinitialisé');
+      emitChanged('line-reset');
+    }
+
+    function emitChanged(source){
+      try{
+        window.dispatchEvent(new CustomEvent('params:changed', { detail: { source: source || 'line-config' } }));
+      }catch(err){
+        console.warn('params change dispatch failed', err);
+      }
+    }
+
+    load();
+
+    if(saveBtn) saveBtn.addEventListener('click', saveCfg);
+    if(resetBtn) resetBtn.addEventListener('click', resetCfg);
+  }catch(err){
+    console.warn('cfg-ligne-save init skipped:', err);
+  }
+})();
+</script>
+<script>
+(function(){
+  try {
+    var section = document.getElementById('cfg-events-csv');
+    if (!section) return;
+
+    var fileInput = document.getElementById('evcsv-file');
+    var importBtn = document.getElementById('evcsv-import');
+    var templateBtn = document.getElementById('evcsv-template');
+    var exportBtn = document.getElementById('evcsv-export');
+    var message = document.getElementById('evcsv-msg');
+    var STORAGE_KEY = 'prodtrack_event_config_v1';
+
+    function setMessage(text, color) {
+      if (!message) return;
+      message.textContent = text || '';
+      message.style.color = color || '';
+    }
+
+    function norm(value) {
+      return value == null ? '' : String(value).trim();
+    }
+
+    function lower(value) {
+      return norm(value).toLowerCase();
+    }
+
+    function pushUnique(list, value) {
+      if (!Array.isArray(list)) return;
+      var val = norm(value);
+      if (!val || list.indexOf(val) !== -1) return;
+      list.push(val);
+    }
+
+    function parseCSV(text) {
+      var delim = (text.includes(';') && !text.includes(',')) ? ';' : ',';
+      var rows = text.split(/\r?\n/)
+        .map(function(line){ return line.split(delim).map(norm); })
+        .filter(function(row){ return row.some(function(cell){ return cell.length; }); });
+      if (!rows.length) throw new Error('Fichier CSV vide');
+      var header = rows.shift().map(lower);
+      var idx = {};
+      ['type','categorie','cause5m','detail','equipement','article','zone'].forEach(function(key){
+        idx[key] = header.indexOf(key);
+      });
+      if (idx.type < 0 && idx.equipement < 0 && idx.article < 0 && idx.zone < 0) {
+        throw new Error('Colonnes manquantes');
+      }
+      var model = { tree: {}, equips: [], articles: [], zones: [] };
+      rows.forEach(function(row){
+        var type = idx.type >= 0 ? norm(row[idx.type]) : '';
+        var categorie = idx.categorie >= 0 ? norm(row[idx.categorie]) : '';
+        var cause5m = idx.cause5m >= 0 ? norm(row[idx.cause5m]) : '';
+        var detail = idx.detail >= 0 ? norm(row[idx.detail]) : '';
+        if (type) {
+          if (!model.tree[type]) model.tree[type] = { categories: {} };
+          var typeNode = model.tree[type];
+          if (categorie) {
+            if (!typeNode.categories[categorie]) typeNode.categories[categorie] = { causes: {} };
+            var categoryNode = typeNode.categories[categorie];
+            if (cause5m) {
+              if (!categoryNode.causes[cause5m]) categoryNode.causes[cause5m] = { details: [] };
+              var causeNode = categoryNode.causes[cause5m];
+              if (detail && causeNode.details.indexOf(detail) === -1) {
+                causeNode.details.push(detail);
+              }
+            }
+          }
+        }
+        if (idx.equipement >= 0) pushUnique(model.equips, row[idx.equipement]);
+        if (idx.article >= 0) pushUnique(model.articles, row[idx.article]);
+        if (idx.zone >= 0) pushUnique(model.zones, row[idx.zone]);
+      });
+      return model;
+    }
+
+    function loadModel() {
+      try {
+        var raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return { tree: {}, equips: [], articles: [], zones: [] };
+        var parsed = JSON.parse(raw);
+        return {
+          tree: parsed && typeof parsed.tree === 'object' ? parsed.tree : {},
+          equips: Array.isArray(parsed && parsed.equips) ? parsed.equips : [],
+          articles: Array.isArray(parsed && parsed.articles) ? parsed.articles : [],
+          zones: Array.isArray(parsed && parsed.zones) ? parsed.zones : []
+        };
+      } catch (err) {
+        console.warn('cfg-events-csv load failed:', err);
+        return { tree: {}, equips: [], articles: [], zones: [] };
+      }
+    }
+
+    function csvEscape(value) {
+      var str = norm(value);
+      if (!str) return '';
+      if (/[",\n;]/.test(str)) {
+        return '"' + str.replace(/"/g, '""') + '"';
+      }
+      return str;
+    }
+
+    function modelToCSV(model) {
+      var lines = ['type,categorie,cause5m,detail,equipement,article,zone'];
+      var tree = model.tree || {};
+      Object.keys(tree).forEach(function(typeName){
+        var typeNode = tree[typeName] || {};
+        var categories = typeNode.categories || {};
+        var catKeys = Object.keys(categories);
+        if (!catKeys.length) {
+          lines.push([csvEscape(typeName),'','','','','',''].join(','));
+          return;
+        }
+        catKeys.forEach(function(categoryName){
+          var categoryNode = categories[categoryName] || {};
+          var causes = categoryNode.causes || {};
+          var causeKeys = Object.keys(causes);
+          if (!causeKeys.length) {
+            lines.push([csvEscape(typeName),csvEscape(categoryName),'','','','',''].join(','));
+            return;
+          }
+          causeKeys.forEach(function(causeName){
+            var causeNode = causes[causeName] || {};
+            var details = Array.isArray(causeNode.details) && causeNode.details.length ? causeNode.details : [''];
+            details.forEach(function(detailName){
+              lines.push([
+                csvEscape(typeName),
+                csvEscape(categoryName),
+                csvEscape(causeName),
+                csvEscape(detailName),
+                '',
+                '',
+                ''
+              ].join(','));
+            });
+          });
+        });
+      });
+      (model.equips || []).forEach(function(eq){
+        lines.push(['','','','', csvEscape(eq), '', ''].join(','));
+      });
+      (model.articles || []).forEach(function(article){
+        lines.push(['','','','','', csvEscape(article), ''].join(','));
+      });
+      (model.zones || []).forEach(function(zone){
+        lines.push(['','','','','','', csvEscape(zone)].join(','));
+      });
+      return lines.join('\n');
+    }
+
+    function hydrateSaisie(model) {
+      if (!model) return;
+      try {
+        window.dispatchEvent(new CustomEvent('prodtrack:events-config', { detail: { model: model } }));
+      } catch (err) {
+        console.warn('cfg-events-csv dispatch failed:', err);
+      }
+    }
+
+    function saveModel(model) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(model));
+      } catch (err) {
+        console.warn('cfg-events-csv save failed:', err);
+      }
+      hydrateSaisie(model);
+    }
+
+    if (importBtn) {
+      importBtn.addEventListener('click', function(){
+        if (!fileInput || !fileInput.files || !fileInput.files.length) {
+          setMessage('Aucun fichier sélectionné.', '');
+          return;
+        }
+        var reader = new FileReader();
+        reader.onload = function(evt){
+          try {
+            var model = parseCSV(evt.target.result || '');
+            saveModel(model);
+            var typeCount = Object.keys(model.tree || {}).length;
+            setMessage('Import réussi (' + typeCount + ' type' + (typeCount > 1 ? 's' : '') + ').', '#4ade80');
+          } catch (err) {
+            setMessage('Erreur: ' + err.message, '#fecaca');
+          }
+          if (fileInput) fileInput.value = '';
+        };
+        reader.onerror = function(){
+          setMessage('Lecture fichier impossible.', '#fecaca');
+        };
+        reader.readAsText(fileInput.files[0], 'UTF-8');
+      });
+    }
+
+    if (templateBtn) {
+      templateBtn.addEventListener('click', function(){
+        var example = 'type,categorie,cause5m,detail,equipement,article,zone\n'
+          + 'Panne,Mécanique,Rupture composant,Casse engrenage,REMPL,ART001,Convoyeur\n'
+          + 'Réglage,Calage format,Réglage standard,Hauteur buse,REMPL,ART002,Zone A\n'
+          + 'Qualité,Aspect,Étiquette pliée,,MIRG,ART003,Zone B';
+        var blob = new Blob([example], { type: 'text/csv' });
+        var link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = 'modele_evenements.csv';
+        document.body.appendChild(link);
+        link.click();
+        setTimeout(function(){
+          URL.revokeObjectURL(link.href);
+          link.remove();
+        }, 0);
+        setMessage('Modèle téléchargé.', '');
+      });
+    }
+
+    if (exportBtn) {
+      exportBtn.addEventListener('click', function(){
+        try {
+          var model = loadModel();
+          var csv = modelToCSV(model);
+          if (!csv) {
+            setMessage('Aucune configuration à exporter.', '');
+            return;
+          }
+          var blob = new Blob([csv], { type: 'text/csv' });
+          var link = document.createElement('a');
+          link.href = URL.createObjectURL(blob);
+          link.download = 'evenements_export.csv';
+          document.body.appendChild(link);
+          link.click();
+          setTimeout(function(){
+            URL.revokeObjectURL(link.href);
+            link.remove();
+          }, 0);
+          setMessage('Export généré.', '#4ade80');
+        } catch (err) {
+          setMessage('Erreur: export impossible', '#fecaca');
+        }
+      });
+    }
+
+    hydrateSaisie(loadModel());
+  } catch (err) {
+    console.warn('cfg-events-csv init skipped:', err);
+  }
+})();
+</script>
+<script>
+(function(){
+  try{
+    function q(sel){ return document.querySelector(sel); }
+    function qa(sel){ return Array.from(document.querySelectorAll(sel)); }
+
+    var eventsNode = q('#events-today') || q('#evt-jour') || q('#evenements-jour') ||
+                     q('[aria-label*="Événements du jour" i]') || q('[data-section="events-today"]');
+
+    if (!eventsNode) {
+      var candidates = qa('section, div');
+      for (var i=0;i<candidates.length;i++){
+        var c = candidates[i];
+        var h = c.querySelector('h1,h2,h3,h4');
+        var t = h && (h.textContent || '').trim().toLowerCase();
+        if (t === 'événements du jour' || t === 'evenements du jour'){
+          eventsNode = c;
+          break;
+        }
+      }
+    }
+
+    var pageHisto = q('#page-histo');
+    if (pageHisto && !q('#histo-events-host')) {
+      var backBtn = pageHisto.querySelector('#btn-back-from-histo');
+      var host = document.createElement('div');
+      host.id = 'histo-events-host';
+      if (backBtn && backBtn.parentNode === pageHisto){
+        pageHisto.insertBefore(host, backBtn);
+      } else {
+        pageHisto.appendChild(host);
+      }
+    }
+
+    var hostNode = q('#histo-events-host');
+
+    if (eventsNode && pageHisto && hostNode){
+      if (eventsNode.parentElement !== hostNode){
+        hostNode.appendChild(eventsNode);
+      }
+    }
+
+  } catch(e){
+    console.warn('Move "Événements du jour" skipped:', e);
+  }
+})();
+</script>
+<script>
+(function(){
+  try{
+    var killIds = ['histo-toolbar','histo-kpis','histo-pagebar','histo-empty','hf-from','hf-to','hf-line','hf-type','hf-cat','hf-q','hf-refresh','hf-export','pg-prev','pg-next','pg-size'];
+    killIds.forEach(function(id){
+      var node = document.getElementById(id);
+      if(node && node.parentNode){
+        node.parentNode.removeChild(node);
+      }
+    });
+  }catch(e){
+    console.warn('Historique cleanup noop:', e);
+  }
+})();
+</script>
+<script>
+(function(){
+  try {
+    var histo = document.getElementById('page-histo');
+    if (!histo) return;
+    var headers = histo.querySelectorAll('tr, thead');
+    headers.forEach(function(el){
+      var txt = (el.textContent || '').toLowerCase();
+      if (
+        txt.includes('date') &&
+        txt.includes('heure') &&
+        txt.includes('ligne') &&
+        txt.includes('type') &&
+        txt.includes('catégorie') &&
+        txt.includes('cause') &&
+        txt.includes('détail') &&
+        txt.includes('durée') &&
+        txt.includes('opérateur')
+      ){
+        el.remove();
+      }
+    });
+  } catch(e){
+    console.warn('Clean extra header skipped:', e);
+  }
+})();
+</script>
+
+
+  <script>
+  (function(){
+    try{
+      var selects = document.querySelectorAll('select');
+      selects.forEach(function(sel){
+        function ensurePlaceholder(){
+          var options = Array.from(sel.options || []);
+          var existing = options.find(function(opt){ return opt.getAttribute && opt.getAttribute('data-placeholder') === 'empty'; });
+          var hasValues = options.some(function(opt){ return opt.value && opt.value.trim() !== ''; });
+          if(!hasValues){
+            if(!existing){
+              var opt = document.createElement('option');
+              opt.disabled = true;
+              opt.selected = sel.selectedIndex === -1;
+              opt.textContent = 'Aucune option';
+              opt.style.opacity = '.6';
+              opt.setAttribute('data-placeholder','empty');
+              sel.appendChild(opt);
+            }
+          } else if(existing){
+            if(existing.selected){
+              sel.selectedIndex = 0;
+            }
+            sel.removeChild(existing);
+          }
+        }
+        ensurePlaceholder();
+        sel.addEventListener('change', ensurePlaceholder);
+        try {
+          var observer = new MutationObserver(function(){ ensurePlaceholder(); });
+          observer.observe(sel, { childList: true });
+        } catch(obsErr) {
+          sel.addEventListener('DOMSubtreeModified', ensurePlaceholder);
+        }
+      });
+    }catch(e){ console.warn('placeholder options skipped', e); }
+  })();
+  </script>
+
+  <script>
+  (function(){
+    try{
+      if (!document.getElementById('ux-toast')) {
+        var host = document.createElement('div');
+        host.id = 'ux-toast';
+        host.setAttribute('aria-live','polite');
+        host.style.cssText = 'position:fixed;right:16px;bottom:16px;z-index:9999;display:flex;flex-direction:column;gap:8px;pointer-events:none';
+        document.body.appendChild(host);
+      }
+      window._uxToast = function(message, background){
+        var wrap = document.createElement('div');
+        wrap.textContent = message;
+        wrap.style.cssText = 'pointer-events:auto;min-width:160px;max-width:360px;padding:10px 12px;border-radius:10px;font-weight:600;opacity:.98';
+        wrap.style.background = background || 'rgba(59,130,246,.15)';
+        wrap.style.border = '1px solid rgba(255,255,255,.15)';
+        wrap.style.color = '#fff';
+        document.getElementById('ux-toast').appendChild(wrap);
+        setTimeout(function(){ wrap.remove(); }, 2000);
+      };
+    }catch(e){ console.warn('toast init skipped', e); }
+  })();
+  </script>
+
+  <script>
+  (function(){
+    try{
+      function hook(btn){
+        if(!btn || btn._uxHooked) return;
+        btn._uxHooked = true;
+        btn.addEventListener('click', function(){
+          setTimeout(function(){ if(window._uxToast) window._uxToast('Événement ajouté'); }, 50);
+        });
+      }
+      ['#btn-add-event','button[id*="ajout" i]','button[id*="add" i]','button[name*="event" i]']
+        .forEach(function(sel){
+          document.querySelectorAll(sel).forEach(hook);
+        });
+    }catch(e){ console.warn('event added toast skipped', e); }
+  })();
+  </script>
+
+  <script>
+  (function(){
+    try{
+      function notify(){ if(window._uxToast) window._uxToast('Enregistré'); }
+
+      var profileBox = document.getElementById('cfg-profiles');
+      if(profileBox && !profileBox.dataset.uxToastBound){
+        profileBox.dataset.uxToastBound = '1';
+        var profileList = document.getElementById('pf-list');
+        if(profileList){
+          profileList.addEventListener('change', function(event){
+            var target = event.target ? event.target.closest('input') : null;
+            if(target){
+              setTimeout(notify, 50);
+            }
+          });
+        }
+        profileBox.addEventListener('click', function(event){
+          var actionable = event.target ? event.target.closest('#pf-add, .pf-del, .pf-up, .pf-down') : null;
+          if(actionable){
+            setTimeout(notify, 50);
+          }
+        });
+      }
+
+      var teamBox = document.getElementById('cfg-teams');
+      if(teamBox && !teamBox.dataset.uxToastBound){
+        teamBox.dataset.uxToastBound = '1';
+        var teamList = document.getElementById('tm-list');
+        if(teamList){
+          teamList.addEventListener('change', function(event){
+            var target = event.target ? event.target.closest('input') : null;
+            if(target){
+              setTimeout(notify, 50);
+            }
+          });
+        }
+        teamBox.addEventListener('click', function(event){
+          var actionable = event.target ? event.target.closest('#tm-add, .tm-del, .tm-up, .tm-down') : null;
+          if(actionable){
+            setTimeout(notify, 50);
+          }
+        });
+      }
+    }catch(e){ console.warn('save toast skipped', e); }
+  })();
+  </script>
+
+  <script>
+  (function(){
+    try{
+      var statusNode = document.getElementById('evcsv-msg');
+      if(!statusNode) return;
+      var observer = new MutationObserver(function(){
+        var text = (statusNode.textContent || '').toLowerCase();
+        if(text.indexOf('erreur') !== -1){
+          statusNode.style.color = '#fecaca';
+        } else {
+          statusNode.style.color = '';
+        }
+      });
+      observer.observe(statusNode, { childList: true, characterData: true, subtree: true });
+    }catch(e){ console.warn('csv error styling skipped', e); }
+  })();
+  </script>
+
+  <script>
+  (function(){
+    try{
+      var selectors = [
+        ['#type', '[name="type"]'],
+        ['#category', '[name="category"]', '#categorie'],
+        ['#cause', '#cause5m', '[name="cause"]'],
+        ['#duration', '#duree', 'input[name*="duree" i]', 'input[name*="duration" i]']
+      ];
+
+      function getFirstExisting(group){
+        for(var i=0;i<group.length;i++){
+          var found = document.querySelector(group[i]);
+          if(found) return found;
+        }
+        return null;
+      }
+
+      function hasMissing(){
+        for(var i=0;i<selectors.length;i++){
+          var element = getFirstExisting(selectors[i]);
+          if(!element) continue;
+          var value = ('value' in element) ? element.value : element.textContent;
+          if(!value || String(value).trim() === ''){
+            return true;
+          }
+        }
+        return false;
+      }
+
+      function restore(node){
+        if(node && node.dataset.uxOriginalText){
+          node.textContent = node.dataset.uxOriginalText;
+          node.style.color = node.dataset.uxOriginalColor || '';
+          delete node.dataset.uxOriginalText;
+          delete node.dataset.uxOriginalColor;
+        }
+      }
+
+      function apply(){
+        var card = document.getElementById('tile-validation-globale');
+        if(!card) return;
+        var status = card.querySelector('#vg-status');
+        var message = card.querySelector('#vg-msg');
+        if(!status) return;
+
+        if(hasMissing()){
+          if(!status.dataset.uxOriginalText){
+            status.dataset.uxOriginalText = status.textContent;
+            status.dataset.uxOriginalColor = status.style.color || '';
+          }
+          if(message && !message.dataset.uxOriginalText){
+            message.dataset.uxOriginalText = message.textContent;
+            message.dataset.uxOriginalColor = message.style.color || '';
+          }
+          status.textContent = 'À compléter';
+          status.style.color = '#f59e0b';
+          if(message){
+            message.textContent = 'Compléter les champs requis';
+            message.style.color = message.dataset.uxOriginalColor || '';
+          }
+        } else {
+          restore(status);
+          if(message){
+            restore(message);
+          }
+        }
+      }
+
+      var bound = new WeakSet();
+
+      function bind(){
+        selectors.forEach(function(group){
+          group.forEach(function(sel){
+            document.querySelectorAll(sel).forEach(function(el){
+              if(bound.has(el)) return;
+              bound.add(el);
+              ['input','change'].forEach(function(evt){
+                el.addEventListener(evt, function(){ setTimeout(apply, 20); });
+              });
+            });
+          });
+        });
+      }
+
+      bind();
+      apply();
+      window.addEventListener('config:updated', function(){ setTimeout(function(){ bind(); apply(); }, 30); });
+      var refreshTimer = setInterval(function(){ bind(); apply(); }, 2000);
+      window.addEventListener('beforeunload', function(){ clearInterval(refreshTimer); });
+    }catch(e){ console.warn('validation yellow skipped', e); }
+  })();
+  </script>
+
+  <script>
+  (function(){
+    try{
+      var saveAllBtn = document.getElementById('cfg-save-all');
+      if(!saveAllBtn) return;
+
+      function ensureToastHost(){
+        var host = document.getElementById('ux-toast');
+        if(host) return host;
+        host = document.createElement('div');
+        host.id = 'ux-toast';
+        host.setAttribute('aria-live', 'polite');
+        host.style.cssText = 'position:fixed;right:16px;bottom:16px;z-index:9999;display:flex;flex-direction:column;gap:8px;pointer-events:none';
+        document.body.appendChild(host);
+        return host;
+      }
+
+      function showToast(message){
+        if(typeof window._uxToast === 'function'){
+          window._uxToast(message, 'rgba(16,185,129,.18)');
+          return;
+        }
+        var host = ensureToastHost();
+        var box = document.createElement('div');
+        box.textContent = message;
+        box.style.cssText = 'pointer-events:auto;min-width:160px;max-width:360px;padding:10px 12px;border-radius:10px;font-weight:600;opacity:.98;background:rgba(16,185,129,.18);border:1px solid rgba(16,185,129,.4);color:#fff';
+        host.appendChild(box);
+        setTimeout(function(){ if(box.parentNode){ box.parentNode.removeChild(box); } }, 2000);
+      }
+
+      function looksLikePath(value){
+        if(!value) return false;
+        var s = String(value).trim();
+        return /^https?:\/\//i.test(s) || /[\\\/]/.test(s);
+      }
+
+      function makeSlug(base, fallback){
+        var raw = base == null ? '' : String(base);
+        raw = raw.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+        if(!raw) raw = fallback;
+        return raw;
+      }
+
+      function ensureUniqueSlug(base, used, fallback){
+        var slug = makeSlug(base, fallback);
+        var candidate = slug;
+        var index = 2;
+        while(used.has(candidate)){
+          candidate = slug + '-' + index;
+          index += 1;
+        }
+        used.add(candidate);
+        return candidate;
+      }
+
+      function clampNumber(value, min, max){
+        if(value == null || value === '') return null;
+        var num = parseFloat(String(value).replace(',', '.'));
+        if(!isFinite(num)) return null;
+        if(typeof min === 'number' && num < min) num = min;
+        if(typeof max === 'number' && num > max) num = max;
+        return num;
+      }
+
+      function normalizeTime(value){
+        if(typeof value !== 'string') return '';
+        var trimmed = value.trim();
+        if(!/^\d{2}:\d{2}$/.test(trimmed)) return '';
+        var parts = trimmed.split(':');
+        var hours = parseInt(parts[0], 10);
+        var minutes = parseInt(parts[1], 10);
+        if(hours > 23 || minutes > 59) return '';
+        return String(hours).padStart(2, '0') + ':' + String(minutes).padStart(2, '0');
+      }
+
+      function sanitizeProfiles(items){
+        var used = new Set();
+        return (items || []).map(function(entry){
+          entry = entry || {};
+          var name = typeof entry.name === 'string' ? entry.name.trim() : '';
+          var idSource = entry.id != null ? entry.id : name;
+          var id = ensureUniqueSlug(idSource, used, 'profil');
+          return {
+            id: id,
+            name: name,
+            cadence: clampNumber(entry.cadence, 0, null),
+            qual: clampNumber(entry.qual, 0, 100),
+            disp: clampNumber(entry.disp, 0, 100),
+            oee: clampNumber(entry.oee, 0, 100)
+          };
+        });
+      }
+
+      function sanitizeTeams(items){
+        var used = new Set();
+        return (items || []).map(function(entry){
+          entry = entry || {};
+          var name = typeof entry.name === 'string' ? entry.name.trim() : '';
+          var code = typeof entry.code === 'string' ? entry.code.trim() : '';
+          var start = normalizeTime(entry.start);
+          var end = normalizeTime(entry.end);
+          var idSource = entry.id != null ? entry.id : (code || name);
+          var id = ensureUniqueSlug(idSource, used, 'team');
+          return { id: id, name: name, code: code, start: start, end: end };
+        });
+      }
+
+      function collectProfiles(){
+        var list = document.getElementById('pf-list');
+        if(!list) return [];
+        var cards = list.querySelectorAll('.pf-item');
+        var raw = Array.from(cards).map(function(card){
+          return {
+            id: card ? card.dataset.id : '',
+            name: card && card.querySelector('.pf-name') ? card.querySelector('.pf-name').value : '',
+            cadence: card && card.querySelector('.pf-cad') ? card.querySelector('.pf-cad').value : '',
+            qual: card && card.querySelector('.pf-qual') ? card.querySelector('.pf-qual').value : '',
+            disp: card && card.querySelector('.pf-disp') ? card.querySelector('.pf-disp').value : '',
+            oee: card && card.querySelector('.pf-oee') ? card.querySelector('.pf-oee').value : ''
+          };
+        });
+        var sanitized = sanitizeProfiles(raw);
+        sanitized.forEach(function(profile, index){
+          var card = cards[index];
+          if(card){
+            card.dataset.id = profile.id;
+          }
+        });
+        return sanitized;
+      }
+
+      function collectTeams(){
+        var list = document.getElementById('tm-list');
+        if(!list) return [];
+        var cards = list.querySelectorAll('.tm-item');
+        var raw = Array.from(cards).map(function(card){
+          return {
+            id: card ? card.dataset.teamId : '',
+            name: card && card.querySelector('.tm-name') ? card.querySelector('.tm-name').value : '',
+            code: card && card.querySelector('.tm-code') ? card.querySelector('.tm-code').value : '',
+            start: card && card.querySelector('.tm-start') ? card.querySelector('.tm-start').value : '',
+            end: card && card.querySelector('.tm-end') ? card.querySelector('.tm-end').value : ''
+          };
+        });
+        var sanitized = sanitizeTeams(raw);
+        sanitized.forEach(function(team, index){
+          var card = cards[index];
+          if(card){
+            card.dataset.teamId = team.id;
+          }
+        });
+        return sanitized;
+      }
+
+      function toMinutes(time){
+        if(!/^\d{2}:\d{2}$/.test(time || '')) return NaN;
+        var parts = time.split(':');
+        return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+      }
+
+      function computeSpan(start, end){
+        var a = toMinutes(start);
+        var b = toMinutes(end);
+        if(isNaN(a) || isNaN(b)) return null;
+        if(b <= a) b += 1440;
+        return { a: a, b: b };
+      }
+
+      function spansOverlap(s1, s2){
+        if(!s1 || !s2) return false;
+        var combos1 = [s1, { a: s1.a + 1440, b: s1.b + 1440 }];
+        var combos2 = [s2, { a: s2.a + 1440, b: s2.b + 1440 }];
+        for(var i=0;i<combos1.length;i++){
+          for(var j=0;j<combos2.length;j++){
+            var left = Math.max(combos1[i].a, combos2[j].a);
+            var right = Math.min(combos1[i].b, combos2[j].b);
+            if(left < right) return true;
+          }
+        }
+        return false;
+      }
+
+      function validateTeams(data){
+        var arr = Array.isArray(data) ? data : [];
+        var errors = [];
+        var warnings = [];
+        var codeSet = new Set();
+        arr.forEach(function(team, index){
+          var row = index + 1;
+          if(!team.name) errors.push('Nom manquant ligne ' + row);
+          if(!team.code) errors.push('Code manquant ligne ' + row);
+          var codeKey = team.code ? team.code.toLowerCase() : '';
+          if(codeKey){
+            if(codeSet.has(codeKey)){
+              errors.push('Code en double ligne ' + row);
+            } else {
+              codeSet.add(codeKey);
+            }
+          }
+          if(!/^\d{2}:\d{2}$/.test(team.start || '')) errors.push('Début invalide ligne ' + row);
+          if(!/^\d{2}:\d{2}$/.test(team.end || '')) errors.push('Fin invalide ligne ' + row);
+        });
+        for(var i=0;i<arr.length;i++){
+          for(var j=i+1;j<arr.length;j++){
+            var span1 = computeSpan(arr[i].start, arr[i].end);
+            var span2 = computeSpan(arr[j].start, arr[j].end);
+            if(span1 && span2 && spansOverlap(span1, span2)){
+              var nameA = arr[i].name || arr[i].code || ('Équipe ' + (i+1));
+              var nameB = arr[j].name || arr[j].code || ('Équipe ' + (j+1));
+              warnings.push('Chevauchement entre "' + nameA + '" et "' + nameB + '"');
+            }
+          }
+        }
+        return { errors: errors, warnings: warnings };
+      }
+
+      function updateTeamMessage(data){
+        var msgNode = document.getElementById('tm-msg');
+        if(!msgNode) return;
+        var result = validateTeams(data);
+        if(result.errors.length){
+          msgNode.textContent = 'À corriger: ' + result.errors.join(' · ');
+        } else if(result.warnings.length){
+          msgNode.textContent = 'Chevauchement: ' + result.warnings.join(' · ');
+        } else if((data || []).length){
+          msgNode.textContent = 'OK';
+        } else {
+          msgNode.textContent = 'Aucune équipe configurée';
+        }
+      }
+
+      function syncProfileSelect(profiles){
+        var sel = document.getElementById('profil-actif');
+        if(!sel) return;
+        var previous = sel.value;
+        var placeholder = sel.querySelector('option[value=""]');
+        var placeholderText = placeholder ? placeholder.textContent : 'Sélectionner un profil';
+        sel.innerHTML = '';
+        if(!placeholder){
+          placeholder = document.createElement('option');
+          placeholder.value = '';
+        }
+        placeholder.textContent = placeholderText;
+        sel.appendChild(placeholder);
+        (profiles || []).forEach(function(profile){
+          if(!profile || !profile.name) return;
+          var opt = document.createElement('option');
+          opt.value = profile.id || profile.name;
+          opt.textContent = profile.name;
+          opt.dataset.profileOption = '1';
+          sel.appendChild(opt);
+        });
+        if(previous && sel.querySelector('option[value="' + previous + '"]')){
+          sel.value = previous;
+        }
+      }
+
+      function syncTeamSelects(teams){
+        var selects = document.querySelectorAll('#filtre-equipe, [data-team-select]');
+        if(!selects.length) return;
+        selects.forEach(function(sel){
+          var previous = sel.value;
+          if(sel.dataset.teamPlaceholderText == null){
+            var placeholderNode = sel.querySelector('option[value=""]') || sel.querySelector('option');
+            sel.dataset.teamPlaceholderText = placeholderNode ? placeholderNode.textContent : 'Sélectionner';
+          }
+          var placeholderText = sel.dataset.teamPlaceholderText || 'Sélectionner';
+          sel.innerHTML = '';
+          var placeholder = document.createElement('option');
+          placeholder.value = '';
+          placeholder.textContent = placeholderText;
+          sel.appendChild(placeholder);
+          (teams || []).forEach(function(team){
+            if(!team || !team.name) return;
+            var value = team.code || team.id;
+            if(!value) return;
+            var opt = document.createElement('option');
+            opt.value = value;
+            opt.textContent = team.name;
+            sel.appendChild(opt);
+          });
+          if(previous && sel.querySelector('option[value="' + previous + '"]')){
+            sel.value = previous;
+          }
+        });
+      }
+
+      saveAllBtn.addEventListener('click', function(){
+        try{
+          var overallOk = true;
+
+          (function saveLineSection(){
+            var lineInput = document.getElementById('cfg-line');
+            var pathReportInput = document.getElementById('cfg-path-report');
+            var pathLiveInput = document.getElementById('cfg-path-live');
+            var modePerfInput = document.getElementById('cfg-mode-performance');
+            var msgNode = document.getElementById('cfg-msg');
+            if(!lineInput && !pathReportInput && !pathLiveInput && !modePerfInput) return;
+            var data = {
+              line: lineInput && lineInput.value ? lineInput.value.trim() : '',
+              path_report: pathReportInput && pathReportInput.value ? pathReportInput.value.trim() : '',
+              path_live: pathLiveInput && pathLiveInput.value ? pathLiveInput.value.trim() : '',
+              mode_performance: modePerfInput ? !!modePerfInput.checked : false
+            };
+            var issues = [];
+            if(!data.line) issues.push('ligne');
+            if(data.path_report && !looksLikePath(data.path_report)) issues.push('lien rapport');
+            if(data.path_live && !looksLikePath(data.path_live)) issues.push('lien fichier en cours');
+            if(issues.length){
+              overallOk = false;
+              if(msgNode) msgNode.textContent = 'Vérifier: ' + issues.join(', ');
+              return;
+            }
+            try{
+              localStorage.setItem('prodtrack_cfg', JSON.stringify(data));
+              if(msgNode) msgNode.textContent = 'Enregistré';
+            }catch(storeErr){
+              overallOk = false;
+              if(msgNode) msgNode.textContent = 'Erreur stockage';
+            }
+          })();
+
+          (function saveProfilesSection(){
+            var list = document.getElementById('pf-list');
+            if(!list) return;
+            var profiles = collectProfiles();
+            try{
+              localStorage.setItem('prodtrack_profiles', JSON.stringify(profiles));
+            }catch(storeErr){
+              overallOk = false;
+              console.warn('cfg-save-all profiles store failed:', storeErr);
+            }
+            syncProfileSelect(profiles);
+          })();
+
+          (function saveTeamsSection(){
+            var list = document.getElementById('tm-list');
+            if(!list) return;
+            var teams = collectTeams();
+            try{
+              localStorage.setItem('prodtrack_teams', JSON.stringify(teams));
+            }catch(storeErr){
+              overallOk = false;
+              console.warn('cfg-save-all teams store failed:', storeErr);
+            }
+            syncTeamSelects(teams);
+            updateTeamMessage(teams);
+            try{
+              window.dispatchEvent(new CustomEvent('prodtrack:teams-updated', { detail: { teams: teams } }));
+            }catch(evtErr){
+              console.warn('cfg-save-all teams dispatch failed:', evtErr);
+            }
+            var validation = validateTeams(teams);
+            if(validation.errors.length){
+              overallOk = false;
+            }
+          })();
+
+          if(overallOk){
+            showToast('Configuration enregistrée');
+          }
+        }catch(err){
+          console.warn('cfg save-all failed:', err);
+        }
+      });
+    }catch(err){
+      console.warn('cfg save-all init skipped:', err);
+    }
+  })();
+  </script>
+
+  <script>
+  (function(){
+    try{
+      function emitParamsChanged(detail){
+        try{
+          window.dispatchEvent(new CustomEvent('params:changed', { detail: detail || { ts: Date.now() } }));
+        } catch (dispatchErr) {
+          console.warn('params:changed dispatch failed:', dispatchErr);
+        }
+      }
+
+      var saveAll = document.getElementById('cfg-save-all');
+      if(saveAll && !saveAll._paramsChangedHook){
+        saveAll._paramsChangedHook = true;
+        saveAll.addEventListener('click', function(){
+          setTimeout(function(){ emitParamsChanged({ source: 'save-all' }); }, 80);
+        });
+      }
+
+      var profilesBox = document.getElementById('cfg-profiles');
+      if(profilesBox && !profilesBox._paramsChangedHook){
+        profilesBox._paramsChangedHook = true;
+        profilesBox.addEventListener('click', function(evt){
+          var target = evt && evt.target;
+          if(target && target.matches('#pf-add, .pf-del, .pf-up, .pf-down')){
+            setTimeout(function(){ emitParamsChanged({ source: 'profiles' }); }, 50);
+          }
+        });
+        profilesBox.addEventListener('change', function(evt){
+          var target = evt && evt.target;
+          if(target && target.matches('#pf-list input, #pf-list input[type="number"]')){
+            setTimeout(function(){ emitParamsChanged({ source: 'profiles' }); }, 50);
+          }
+        });
+        profilesBox.addEventListener('input', function(evt){
+          var target = evt && evt.target;
+          if(target && target.matches('#pf-list input, #pf-list input[type="number"]')){
+            setTimeout(function(){ emitParamsChanged({ source: 'profiles' }); }, 50);
+          }
+        });
+      }
+
+      var teamsBox = document.getElementById('cfg-teams');
+      if(teamsBox && !teamsBox._paramsChangedHook){
+        teamsBox._paramsChangedHook = true;
+        teamsBox.addEventListener('click', function(evt){
+          var target = evt && evt.target;
+          if(target && target.matches('#tm-add, .tm-del, .tm-up, .tm-down')){
+            setTimeout(function(){ emitParamsChanged({ source: 'teams' }); }, 50);
+          }
+        });
+        teamsBox.addEventListener('change', function(evt){
+          var target = evt && evt.target;
+          if(target && target.matches('#tm-list input, #tm-list input[type="time"]')){
+            setTimeout(function(){ emitParamsChanged({ source: 'teams' }); }, 50);
+          }
+        });
+        teamsBox.addEventListener('input', function(evt){
+          var target = evt && evt.target;
+          if(target && target.matches('#tm-list input, #tm-list input[type="time"]')){
+            setTimeout(function(){ emitParamsChanged({ source: 'teams' }); }, 50);
+          }
+        });
+      }
+
+      window.addEventListener('prodtrack:teams-updated', function(event){
+        emitParamsChanged({ source: 'teams-event', data: event && event.detail ? event.detail.teams : undefined });
+      });
+
+      window.addEventListener('prodtrack:events-config', function(event){
+        if(event && event.detail && event.detail.source === 'saisie-sync') return;
+        emitParamsChanged({ source: 'events-csv', data: event && event.detail ? event.detail.model : undefined });
+      });
+    }catch(err){
+      console.warn('params-change emitter skipped', err);
+    }
+  })();
+  </script>
+
+  <script>
+  (function(){
+    try{
+      function $(sel){ return document.querySelector(sel); }
+
+      function toMinutes(value){
+        var match = /^(\d{2}):(\d{2})$/.exec(value || '');
+        return match ? (+match[1]) * 60 + (+match[2]) : NaN;
+      }
+
+      function formatTeamLabel(team){
+        var start = (team && typeof team.start === 'string') ? team.start : '';
+        var end = (team && typeof team.end === 'string') ? team.end : '';
+        var format = function(time){
+          return /^(\d{2}):(\d{2})$/.test(time || '') ? time.replace(':', 'h') : '--:--';
+        };
+        return (team && team.name ? team.name : 'Équipe') + ' (' + format(start) + ' - ' + format(end) + ')';
+      }
+
+      function loadJSON(key, fallback){
+        try {
+          var raw = localStorage.getItem(key);
+          if(raw == null) return fallback;
+          var parsed = JSON.parse(raw);
+          return parsed == null ? fallback : parsed;
+        } catch (err) {
+          console.warn(key + ' parse failed:', err);
+          return fallback;
+        }
+      }
+
+      function sortTeams(data){
+        return (Array.isArray(data) ? data.slice() : []).sort(function(a, b){
+          var sa = toMinutes(a && a.start);
+          var sb = toMinutes(b && b.start);
+          if(isNaN(sa)) sa = 0;
+          if(isNaN(sb)) sb = 0;
+          return sa - sb;
+        });
+      }
+
+      function refreshTeams(teamsInput){
+        var select = $('#filtre-equipe') || document.querySelector('[data-team-select]');
+        if(!select) return;
+        var teams = Array.isArray(teamsInput) ? teamsInput : loadJSON('prodtrack_teams', []);
+        var previous = select.value;
+        if(!select.dataset.teamPlaceholderText){
+          var placeholderNode = select.querySelector('option[value=""]') || select.querySelector('option');
+          select.dataset.teamPlaceholderText = placeholderNode ? placeholderNode.textContent : 'Toutes équipes';
+        }
+        var placeholderText = select.dataset.teamPlaceholderText || 'Toutes équipes';
+        select.innerHTML = '';
+        var placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = placeholderText;
+        select.appendChild(placeholder);
+        sortTeams(teams).forEach(function(team){
+          if(!team || !team.name) return;
+          var opt = document.createElement('option');
+          opt.value = team.code || team.name;
+          opt.textContent = formatTeamLabel(team);
+          select.appendChild(opt);
+        });
+        if(previous && Array.prototype.some.call(select.options, function(option){ return option.value === previous; })){
+          select.value = previous;
+        } else {
+          select.value = '';
+        }
+      }
+
+      function loadProfiles(){
+        var items = loadJSON('prodtrack_profiles', []);
+        return Array.isArray(items) ? items : [];
+      }
+
+      function refreshProfiles(){
+        var select = $('#profil-actif');
+        if(!select) return;
+        var profiles = loadProfiles();
+        var previous = select.value;
+        var placeholder = select.querySelector('option[value=""]');
+        var placeholderText = placeholder ? placeholder.textContent : 'Sélectionner un profil';
+        select.innerHTML = '';
+        if(!placeholder){
+          placeholder = document.createElement('option');
+          placeholder.value = '';
+        }
+        placeholder.textContent = placeholderText;
+        select.appendChild(placeholder);
+        profiles.forEach(function(profile){
+          if(!profile || !profile.name) return;
+          var opt = document.createElement('option');
+          opt.value = profile.id || profile.name;
+          opt.textContent = profile.name;
+          select.appendChild(opt);
+        });
+        if(previous && Array.prototype.some.call(select.options, function(option){ return option.value === previous; })){
+          select.value = previous;
+        } else {
+          select.value = '';
+        }
+      }
+
+      var lastEventPayload = null;
+
+      function refreshEventsFromStorage(force){
+        var model = loadJSON('prodtrack_event_config_v1', null);
+        var payload = JSON.stringify(model || null);
+        if(!force && payload === lastEventPayload) return;
+        lastEventPayload = payload;
+        try {
+          window.dispatchEvent(new CustomEvent('prodtrack:events-config', { detail: { model: model, source: 'saisie-sync' } }));
+        } catch (err) {
+          console.warn('events config dispatch failed:', err);
+        }
+      }
+
+      function refreshAll(forceEvents){
+        refreshTeams();
+        refreshProfiles();
+        refreshEventsFromStorage(!!forceEvents);
+      }
+
+      refreshAll(true);
+
+      document.addEventListener('visibilitychange', function(){
+        if(!document.hidden) refreshAll(false);
+      });
+
+      window.addEventListener('params:changed', function(){
+        refreshAll(true);
+      });
+
+      window.addEventListener('prodtrack:teams-updated', function(evt){
+        var detailTeams = evt && evt.detail && Array.isArray(evt.detail.teams) ? evt.detail.teams : undefined;
+        refreshTeams(detailTeams);
+      });
+
+      window.addEventListener('prodtrack:events-config', function(evt){
+        var model = evt && evt.detail ? (evt.detail.model || null) : null;
+        lastEventPayload = JSON.stringify(model || null);
+      });
+
+      var saveAllBtn = document.getElementById('cfg-save-all');
+      if(saveAllBtn && !saveAllBtn.__paramsRefreshAttached){
+        saveAllBtn.__paramsRefreshAttached = true;
+        saveAllBtn.addEventListener('click', function(){
+          setTimeout(function(){ refreshAll(true); }, 80);
+        });
+      }
+    }catch(err){
+      console.warn('params sync listener skipped', err);
+    }
+  })();
+  </script>
+
+  <script>
+  (function(){
+    try{
+      document.querySelectorAll('label').forEach(function(label){
+        if(!label.hasAttribute('for')){
+          var control = label.querySelector('input, select, textarea');
+          if(!control){
+            var sibling = label.nextElementSibling;
+            if(sibling && /^(INPUT|SELECT|TEXTAREA)$/.test(sibling.tagName)){
+              control = sibling;
+            }
+          }
+          if(control && control.id){
+            label.setAttribute('for', control.id);
+          }
+        }
+      });
+    }catch(e){ console.warn('label for check skipped', e); }
+  })();
+  </script>
 </body>
 </html>
