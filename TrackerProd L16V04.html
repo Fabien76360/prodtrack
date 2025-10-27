@@ -69,6 +69,273 @@ Puis ouvrir http://localhost:8000/
     body.density-large{font-size:18px;}
     @media (prefers-reduced-motion: reduce){*{animation-duration:0.01ms!important;animation-iteration-count:1!important;transition-duration:0.01ms!important;}}
   </style>
+  <script>
+  /** ==== CONFIG FALLBACK ==== **/
+  const DEFAULT_EVENTS_CONFIG = {
+    "version": "1.0",
+    "taxonomy": {
+      "types": ["Disponibilité","Performance","Qualité"],
+      "categories": [
+        { "label":"Panne","type":"Disponibilité","sub":["Mécanique","Électrique","Capteur","Logiciel"] },
+        { "label":"Réglage","type":"Disponibilité","sub":["Démarrage","Changement format","Calage"] },
+        { "label":"Micro-arrêt","type":"Performance","sub":["Blocage court","Vidage convoyeur"] },
+        { "label":"Vitesse réduite","type":"Performance","sub":["Matière","Process","Organisation"] },
+        { "label":"Défaut en cours","type":"Qualité","sub":["Impression","Contamination","Déformation"] },
+        { "label":"Manque article","type":"Disponibilité","sub":["Composant","Produit"] },
+        { "label":"Incident environnemental","type":"Disponibilité","sub":["Air","Eau","Électricité","Vapeur"] }
+      ],
+      "causes_5m": ["Main-d'œuvre","Méthode","Matière","Matériel","Milieu"],
+      "details": [
+        { "code":"DET-001","label":"Pompe doseuse bloquée","category":"Panne","sub":"Mécanique" },
+        { "code":"DET-002","label":"Réglage tête de sertissage","category":"Réglage","sub":"Changement format" },
+        { "code":"DET-003","label":"Manque étiquette","category":"Manque article","sub":"Composant" }
+      ]
+    },
+    "fields": {
+      "equipement": { "label":"Équipement","type":"select","source":"equipements" },
+      "sous_ensemble": { "label":"Sous-ensemble","type":"select","source":"sous_ensembles","depends_on":"equipement" },
+      "article": { "label":"Article","type":"select","source":"articles" },
+      "lot": { "label":"Lot","type":"text" },
+      "type_defaut": { "label":"Type de défaut","type":"select","source":"defauts" },
+      "raison_cadence": { "label":"Raison cadence","type":"textarea" },
+      "zone": { "label":"Zone","type":"select","source":"zones" },
+      "utilite": { "label":"Utilité","type":"select","source":"utilities" }
+    },
+    "rules": [
+      { "when": { "categorie_in":["Panne","Réglage"] }, "requires":["equipement","sous_ensemble"] },
+      { "when": { "cause_5m":"Matériel" }, "requires":["equipement","sous_ensemble"] },
+      { "when": { "categorie":"Manque article" }, "requires":["article","lot"] },
+      { "when": { "categorie":"Défaut en cours" }, "requires":["article","type_defaut"], "optional":["lot"] },
+      { "when": { "categorie":"Vitesse réduite" }, "requires":["raison_cadence"] },
+      { "when": { "categorie":"Incident environnemental" }, "requires":["zone","utilite"] }
+    ],
+    "lists": {
+      "equipements":["Remplisseuse","Mirage","Conditionneuse"],
+      "sous_ensembles":{
+        "Remplisseuse":["Pompe","Aiguille","Vis sans fin"],
+        "Mirage":["Caméra","Convoyeur","Éjecteur"],
+        "Conditionneuse":["Étiqueteuse","Scellage","Alimenteur"]
+      },
+      "articles":["Flacon","Bouchon","Étiquette","Étui"],
+      "defauts":["Déformation","Impression","Contamination"],
+      "zones":["Remplissage","Mirage","Conditionnement"],
+      "utilities":["Air","Eau","Vapeur","Électricité"]
+    },
+    "export": {
+      "filename_pattern":"{LIGNE}_{DATE}",
+      "columns":["date_heure","type","categorie","cause_5m","detail_code","detail_label","equipement","sous_ensemble","article","lot","type_defaut","raison_cadence","zone","utilite","duree_min","impact_qty","commentaire"]
+    },
+    "ui": { "generate_event_code": true, "event_code_pattern":"{TYPE}-{EQ}-{SUB}-{NN}" }
+  };
+
+  function evt_validateConfig(cfg){
+    if(!cfg||typeof cfg!=='object') return false;
+    const taxonomy=cfg.taxonomy||{};
+    const lists=cfg.lists||{};
+    const exportCfg=cfg.export||{};
+    const hasTaxonomy=Array.isArray(taxonomy.types)&&Array.isArray(taxonomy.categories)&&Array.isArray(taxonomy.causes_5m)&&Array.isArray(taxonomy.details);
+    const hasFields=cfg.fields&&typeof cfg.fields==='object';
+    const hasRules=Array.isArray(cfg.rules);
+    const hasLists=typeof lists==='object';
+    const hasExport=Array.isArray(exportCfg.columns);
+    const hasUi=cfg.ui&&typeof cfg.ui==='object';
+    return hasTaxonomy&&hasFields&&hasRules&&hasLists&&hasExport&&hasUi;
+  }
+
+  async function loadEventsConfig(){
+    let cfg=null;
+    try {
+      const response=await fetch("config_evenements.json",{cache:"no-store"});
+      if(!response.ok) throw new Error("fetch config ko");
+      const json=await response.json();
+      cfg=evt_validateConfig(json)?json:null;
+    } catch(err){
+      console.warn('EVT config fallback',err);
+    }
+    if(!cfg){
+      cfg=DEFAULT_EVENTS_CONFIG;
+    }
+    window.EVENTS_CONFIG=cfg;
+    window.dispatchEvent(new CustomEvent('evt:config-ready',{detail:{config:cfg}}));
+    return cfg;
+  }
+
+  /** Helpers **/
+  function evt_norm(s){ return (s||"").toString().trim(); }
+  function evt_compact(s){ return evt_norm(s).replace(/\s+/g,"").slice(0,6).toUpperCase()||"NA"; }
+
+  /** Rules engine **/
+  function evt_matchWhen(state, when){
+    if(!when) return true;
+    if(when.type && state.type!==when.type) return false;
+    if(when.categorie && state.categorie!==when.categorie) return false;
+    if(when.categorie_in && !when.categorie_in.includes(state.categorie)) return false;
+    if(when.cause_5m && state.cause_5m!==when.cause_5m) return false;
+    if(when.detail_code && state.detail_code!==when.detail_code) return false;
+    return true;
+  }
+  function evt_applyRules(state, rules){
+    const req=new Set(), opt=new Set();
+    for(const r of (rules||[])){
+      if(evt_matchWhen(state, r.when)){
+        (r.requires||[]).forEach(x=>req.add(x));
+        (r.optional||[]).forEach(x=>opt.add(x));
+      }
+    }
+    return { required:[...req], optional:[...opt] };
+  }
+
+  /** Bind dynamic lists **/
+  function evt_bindDependentLists(cfg){
+    const q=s=>document.querySelector(s);
+    const L=cfg?.lists||{};
+    const T=cfg?.taxonomy||{};
+    const preserveValue=(el,fill)=>{
+      if(!el) return;
+      const previous=el.value;
+      fill();
+      if(previous && Array.from(el.options||[]).some(option=>option.value===previous)){
+        el.value=previous;
+      }
+      el.dispatchEvent(new Event('input',{bubbles:true}));
+      el.dispatchEvent(new Event('change',{bubbles:true}));
+    };
+
+    const causeSel=q('#cause5m');
+    if(causeSel && Array.isArray(T.causes_5m)){
+      preserveValue(causeSel,()=>{
+        causeSel.innerHTML='<option value=""></option>'+T.causes_5m.map(v=>`<option>${v}</option>`).join('');
+      });
+    }
+
+    const eq=q('#equipement');
+    if(eq && Array.isArray(L.equipements)){
+      preserveValue(eq,()=>{
+        eq.innerHTML='<option value=""></option>'+L.equipements.map(v=>`<option>${v}</option>`).join('');
+      });
+    }
+    const art=q('#article');
+    if(art && Array.isArray(L.articles)){
+      preserveValue(art,()=>{
+        art.innerHTML='<option value=""></option>'+L.articles.map(v=>`<option>${v}</option>`).join('');
+      });
+    }
+    const def=q('#type_defaut');
+    if(def && Array.isArray(L.defauts)){
+      preserveValue(def,()=>{
+        def.innerHTML='<option value=""></option>'+L.defauts.map(v=>`<option>${v}</option>`).join('');
+      });
+    }
+    const zone=q('#zone');
+    if(zone && Array.isArray(L.zones)){
+      preserveValue(zone,()=>{
+        zone.innerHTML='<option value=""></option>'+L.zones.map(v=>`<option>${v}</option>`).join('');
+      });
+    }
+    const uti=q('#utilite');
+    if(uti && Array.isArray(L.utilities)){
+      preserveValue(uti,()=>{
+        uti.innerHTML='<option value=""></option>'+L.utilities.map(v=>`<option>${v}</option>`).join('');
+      });
+    }
+
+    const sub=q('#sous_ensemble');
+    const equipSelector=q('#equipement');
+    if(sub && equipSelector && L.sous_ensembles){
+      const updateSubs=()=>{
+        const key=equipSelector.value;
+        const arr=(L.sous_ensembles||{})[key]||[];
+        const previous=sub.value;
+        sub.innerHTML='<option value=""></option>'+arr.map(v=>`<option>${v}</option>`).join('');
+        if(previous && arr.includes(previous)){
+          sub.value=previous;
+        }
+        sub.dispatchEvent(new Event('input',{bubbles:true}));
+        sub.dispatchEvent(new Event('change',{bubbles:true}));
+      };
+      equipSelector.addEventListener('change',updateSubs);
+      updateSubs();
+    }
+  }
+
+  /** Detail options filtered by category/sub **/
+  function evt_bindDetailOptions(cfg){
+    const q=s=>document.querySelector(s);
+    const det=cfg?.taxonomy?.details||[];
+    const catSel=q('#categorie');
+    const subSel=q('#sous_categorie')||q('#sous_ensemble');
+    const detailSel=q('#detail');
+    function refresh(){
+      if(!detailSel) return;
+      const cat=catSel?.value||'';
+      const sub=subSel?.value||'';
+      const items=det.filter(d=>d.category===cat && (!d.sub || d.sub===sub));
+      const previous=detailSel.value;
+      detailSel.innerHTML='<option value=""></option>'+items.map(o=>`<option value="${o.code}">${o.label}</option>`).join('');
+      if(previous && items.some(o=>o.code===previous)){
+        detailSel.value=previous;
+      }
+      detailSel.dispatchEvent(new Event('input',{bubbles:true}));
+      detailSel.dispatchEvent(new Event('change',{bubbles:true}));
+      window.dispatchEvent(new CustomEvent('evt:details-options',{detail:{items,count:items.length,category:cat,sub}}));
+    }
+    catSel && catSel.addEventListener('change',refresh);
+    subSel && subSel.addEventListener('change',refresh);
+    refresh();
+  }
+
+  /** Generate event code **/
+  function evt_genEventCode(cfg, state, countNN){
+    if(!(cfg?.ui?.generate_event_code)) return '';
+    const pat=cfg.ui.event_code_pattern||'{TYPE}-{EQ}-{SUB}-{NN}';
+    return pat
+      .replace('{TYPE}', evt_compact(state.type))
+      .replace('{EQ}', evt_compact(state.equipement))
+      .replace('{SUB}', evt_compact(state.sous_ensemble))
+      .replace('{NN}', String(countNN||1).padStart(2,'0'));
+  }
+
+  function evt_escapeCsv(value){
+    if(value===null||value===undefined) return '';
+    const str=String(value);
+    if(/[";\n\r]/.test(str)){
+      return '"'+str.replace(/"/g,'""')+'"';
+    }
+    return str;
+  }
+
+  /** Export mapping 17 colonnes **/
+  function evt_mapForExport(cfg, ev){
+    const cols=cfg?.export?.columns||["date_heure","type","categorie","cause_5m","detail_code","detail_label","equipement","sous_ensemble","article","lot","type_defaut","raison_cadence","zone","utilite","duree_min","impact_qty","commentaire"];
+    const row={
+      date_heure: ev.date_heure||ev.timestamp||'',
+      type: ev.type||'',
+      categorie: ev.categorie||'',
+      cause_5m: ev.cause_5m||'',
+      detail_code: ev.detail_code||'',
+      detail_label: ev.detail_label||'',
+      equipement: ev.equipement||'',
+      sous_ensemble: ev.sous_ensemble||'',
+      article: ev.article||'',
+      lot: ev.lot||'',
+      type_defaut: ev.type_defaut||'',
+      raison_cadence: ev.raison_cadence||'',
+      zone: ev.zone||'',
+      utilite: ev.utilite||'',
+      duree_min: ev.duree_min??ev.duration_min??0,
+      impact_qty: ev.impact_qty??0,
+      commentaire: ev.commentaire||ev.comment||''
+    };
+    return cols.map(k=>evt_escapeCsv(row[k]??'')).join(';');
+  }
+
+  /** Bootstrap **/
+  window.addEventListener('DOMContentLoaded', async ()=>{
+    const cfg=await loadEventsConfig();
+    evt_bindDependentLists(cfg);
+    evt_bindDetailOptions(cfg);
+  });
+  </script>
 </head>
 <body class="bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100 density-standard" x-data="appState" x-init="initApp()">
   <div class="min-h-screen grid xl:grid-cols-[280px_1fr] gap-6 px-4 py-6 md:px-6 lg:px-8">
@@ -426,7 +693,7 @@ Puis ouvrir http://localhost:8000/
         <div class="grid md:grid-cols-3 gap-3" @keydown.enter.prevent="addCause">
           <label class="flex flex-col gap-1">
             <span class="text-xs uppercase tracking-wide text-slate-500">Type d’arrêt</span>
-            <select x-model="causeDraft.type" @change="causeDraft.cat='';causeDraft.sub='';" class="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/80 dark:bg-slate-950/60 px-3 py-2 focus:ring-2 focus:ring-primary" :disabled="currentHour.closed">
+            <select id="type" x-model="causeDraft.type" @change="causeDraft.cat='';causeDraft.sub='';causeDraft.cause5m='';causeDraft.detail='';evtOnFormChange()" class="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/80 dark:bg-slate-950/60 px-3 py-2 focus:ring-2 focus:ring-primary" :disabled="currentHour.closed">
               <option value="">Sélectionner</option>
               <template x-for="type in Object.keys(settings.stopSchema||{})" :key="'type-'+type">
                 <option :value="type" x-text="type"></option>
@@ -435,20 +702,78 @@ Puis ouvrir http://localhost:8000/
           </label>
           <label class="flex flex-col gap-1">
             <span class="text-xs uppercase tracking-wide text-slate-500">Catégorie</span>
-            <select x-model="causeDraft.cat" @change="causeDraft.sub='';" class="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/80 dark:bg-slate-950/60 px-3 py-2 focus:ring-2 focus:ring-primary" :disabled="!causeDraft.type || currentHour.closed">
+            <select id="categorie" x-model="causeDraft.cat" @change="causeDraft.sub='';causeDraft.detail='';evtOnFormChange()" class="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/80 dark:bg-slate-950/60 px-3 py-2 focus:ring-2 focus:ring-primary" :disabled="!causeDraft.type || currentHour.closed">
               <option value="">Sélectionner</option>
               <template x-for="cat in Object.keys(settings.stopSchema?.[causeDraft.type]||{})" :key="'cat-'+cat">
                 <option :value="cat" x-text="cat"></option>
               </template>
             </select>
           </label>
+          <label class="flex flex-col gap-1" x-show="evtShowCause5m" x-cloak>
+            <span class="text-xs uppercase tracking-wide text-slate-500">Cause 5M</span>
+            <select id="cause5m" x-model="causeDraft.cause5m" @change="evtOnFormChange()" class="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/80 dark:bg-slate-950/60 px-3 py-2 focus:ring-2 focus:ring-primary" :disabled="currentHour.closed">
+              <option value=""></option>
+            </select>
+          </label>
+          <label class="flex flex-col gap-1" x-show="evtShowDetail" x-cloak>
+            <span class="text-xs uppercase tracking-wide text-slate-500">Détail</span>
+            <select id="detail" x-model="causeDraft.detail" @change="evtOnDetailChange($event)" class="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/80 dark:bg-slate-950/60 px-3 py-2 focus:ring-2 focus:ring-primary" :disabled="!causeDraft.cat || currentHour.closed">
+              <option value=""></option>
+            </select>
+          </label>
           <label class="flex flex-col gap-1">
             <span class="text-xs uppercase tracking-wide text-slate-500">Sous-catégorie</span>
-            <select x-model="causeDraft.sub" class="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/80 dark:bg-slate-950/60 px-3 py-2 focus:ring-2 focus:ring-primary" :disabled="!causeDraft.cat || currentHour.closed">
+            <select id="sous_categorie" x-model="causeDraft.sub" @change="evtOnFormChange()" class="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/80 dark:bg-slate-950/60 px-3 py-2 focus:ring-2 focus:ring-primary" :disabled="!causeDraft.cat || currentHour.closed">
               <option value="">Sélectionner</option>
               <template x-for="sub in (settings.stopSchema?.[causeDraft.type]?.[causeDraft.cat]||[])" :key="'sub-'+sub">
                 <option :value="sub" x-text="sub"></option>
               </template>
+            </select>
+          </label>
+        </div>
+        <div class="grid md:grid-cols-3 gap-3" x-cloak>
+          <label class="flex flex-col gap-1" x-show="evtShouldShowField('equipement')">
+            <span class="text-xs uppercase tracking-wide text-slate-500">Équipement</span>
+            <select id="equipement" x-model="causeDraft.equipement" @change="evtOnFormChange()" class="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/80 dark:bg-slate-950/60 px-3 py-2 focus:ring-2 focus:ring-primary" :required="evtIsRequired('equipement')" :disabled="currentHour.closed">
+              <option value=""></option>
+            </select>
+          </label>
+          <label class="flex flex-col gap-1" x-show="evtShouldShowField('sous_ensemble')">
+            <span class="text-xs uppercase tracking-wide text-slate-500">Sous-ensemble</span>
+            <select id="sous_ensemble" x-model="causeDraft.sous_ensemble" @change="evtOnFormChange()" class="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/80 dark:bg-slate-950/60 px-3 py-2 focus:ring-2 focus:ring-primary" :required="evtIsRequired('sous_ensemble')" :disabled="currentHour.closed">
+              <option value=""></option>
+            </select>
+          </label>
+          <label class="flex flex-col gap-1" x-show="evtShouldShowField('article')">
+            <span class="text-xs uppercase tracking-wide text-slate-500">Article</span>
+            <select id="article" x-model="causeDraft.article" @change="evtOnFormChange()" class="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/80 dark:bg-slate-950/60 px-3 py-2 focus:ring-2 focus:ring-primary" :required="evtIsRequired('article')" :disabled="currentHour.closed">
+              <option value=""></option>
+            </select>
+          </label>
+          <label class="flex flex-col gap-1" x-show="evtShouldShowField('lot')">
+            <span class="text-xs uppercase tracking-wide text-slate-500">Lot</span>
+            <input id="lot" type="text" x-model="causeDraft.lot" @input="evtOnFormChange()" class="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/80 dark:bg-slate-950/60 px-3 py-2 focus:ring-2 focus:ring-primary" :required="evtIsRequired('lot')" :disabled="currentHour.closed">
+          </label>
+          <label class="flex flex-col gap-1" x-show="evtShouldShowField('type_defaut')">
+            <span class="text-xs uppercase tracking-wide text-slate-500">Type de défaut</span>
+            <select id="type_defaut" x-model="causeDraft.type_defaut" @change="evtOnFormChange()" class="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/80 dark:bg-slate-950/60 px-3 py-2 focus:ring-2 focus:ring-primary" :required="evtIsRequired('type_defaut')" :disabled="currentHour.closed">
+              <option value=""></option>
+            </select>
+          </label>
+          <label class="flex flex-col gap-1 md:col-span-3" x-show="evtShouldShowField('raison_cadence')">
+            <span class="text-xs uppercase tracking-wide text-slate-500">Raison cadence</span>
+            <textarea id="raison_cadence" x-model="causeDraft.raison_cadence" @input="evtOnFormChange()" class="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/80 dark:bg-slate-950/60 px-3 py-2 focus:ring-2 focus:ring-primary" rows="2" :required="evtIsRequired('raison_cadence')" :disabled="currentHour.closed"></textarea>
+          </label>
+          <label class="flex flex-col gap-1" x-show="evtShouldShowField('zone')">
+            <span class="text-xs uppercase tracking-wide text-slate-500">Zone</span>
+            <select id="zone" x-model="causeDraft.zone" @change="evtOnFormChange()" class="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/80 dark:bg-slate-950/60 px-3 py-2 focus:ring-2 focus:ring-primary" :required="evtIsRequired('zone')" :disabled="currentHour.closed">
+              <option value=""></option>
+            </select>
+          </label>
+          <label class="flex flex-col gap-1" x-show="evtShouldShowField('utilite')">
+            <span class="text-xs uppercase tracking-wide text-slate-500">Utilité</span>
+            <select id="utilite" x-model="causeDraft.utilite" @change="evtOnFormChange()" class="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/80 dark:bg-slate-950/60 px-3 py-2 focus:ring-2 focus:ring-primary" :required="evtIsRequired('utilite')" :disabled="currentHour.closed">
+              <option value=""></option>
             </select>
           </label>
         </div>
@@ -483,7 +808,12 @@ Puis ouvrir http://localhost:8000/
                 <template x-for="cause in currentHour.causes" :key="cause.uid">
                   <tr class="border-t border-slate-200 dark:border-slate-800">
                     <td class="px-4 py-2">
-                      <span :class="badgeClassForType(cause.type)" x-text="cause.type || 'Autres'"></span>
+                      <div class="flex items-center gap-2 flex-wrap">
+                        <template x-if="cause.event_code">
+                          <span class="px-2 py-0.5 rounded-lg bg-slate-200 dark:bg-slate-800 text-xs font-semibold text-slate-600 dark:text-slate-200" x-text="cause.event_code"></span>
+                        </template>
+                        <span :class="badgeClassForType(cause.type)" x-text="cause.type || 'Autres'"></span>
+                      </div>
                     </td>
                     <td class="px-4 py-2" x-text="cause.cat || '—'"></td>
                     <td class="px-4 py-2" x-text="cause.sub || '—'"></td>
@@ -3138,7 +3468,12 @@ const demoState = {
         // PATCH UX: état initial enrichi avec le schéma des arrêts et le brouillon de cause
         settings:{categories:[],daySchedule:[],oeeProfiles:[],shifts:[],stopSchema:JSON.parse(JSON.stringify(DEFAULT_STOP_SCHEMA)),stopTypes:['Technique','Organisation','Qualité','Utilités','Autres'],lineName:'',saveTarget:'local',savePath:''},
         stopTypes:[],
-        causeDraft:{type:'',cat:'',sub:'',minutes:5},
+        causeDraft:{type:'',cat:'',sub:'',cause5m:'',detail:'',detailLabel:'',minutes:5,equipement:'',sous_ensemble:'',article:'',lot:'',type_defaut:'',raison_cadence:'',zone:'',utilite:''},
+        evtConfigReady:false,
+        evtShowCause5m:false,
+        evtShowDetail:false,
+        evtDynamicFields:{required:[],optional:[]},
+        evtLastDetailCount:0,
         teamPool:[],
         teamBoards:[],
         dragged:null,
@@ -3310,6 +3645,14 @@ const demoState = {
           window.addEventListener('causes:total',()=>{this.recalcCurrent();});
           updateNewDayButton();
           if(!safeGet(GUIDE_KEY,false)){setTimeout(()=>{this.guideOpen=true;safeSet(GUIDE_KEY,true);},500);}
+          this.evtInitModule();
+          this.$watch('causeDraft.type',()=>this.evtOnFormChange());
+          this.$watch('causeDraft.cat',()=>this.evtOnFormChange());
+          this.$watch('causeDraft.sub',()=>this.evtOnFormChange());
+          this.$watch('causeDraft.cause5m',()=>this.evtOnFormChange());
+          this.$watch('causeDraft.detail',()=>this.evtOnFormChange());
+          window.addEventListener('evt:config-ready',()=>{this.$nextTick(()=>this.evtInitModule());});
+          window.addEventListener('evt:details-options',event=>{this.evtHandleDetailsOptions(event?.detail||{});});
           this.persist();
         },
         openGuide(){this.guideOpen=true;},
@@ -4087,6 +4430,12 @@ const demoState = {
             const sub=(cause.sub||cause.subCategory||'').trim();
             const typeRaw=(cause.type||cause.stopType||'').trim();
             const type=typeRaw||this.inferStopType(cat,sub);
+            const cause5m=cause.cause_5m || cause.cause5m || '';
+            const detailCode=cause.detail_code || cause.detailCode || cause.detail || '';
+            let detailLabel=cause.detail_label || cause.detailLabel || '';
+            if(detailCode && !detailLabel){
+              detailLabel=this.evtLookupDetailLabel(detailCode);
+            }
             return {
               uid: cause.uid || cause.id || `cause-${idx}-${crypto.randomUUID()}`,
               // PATCH UX: stockage complet Type → Catégorie → Sous-catégorie
@@ -4096,7 +4445,23 @@ const demoState = {
               sub,
               subId: cause.subId || null,
               minutes: Math.max(0,Number(cause.minutes ?? cause.min ?? 0)),
-              comment: typeof cause.comment==='string'?cause.comment:''
+              comment: typeof cause.comment==='string'?cause.comment:'',
+              cause_5m:cause5m,
+              cause5m,
+              detail_code:detailCode,
+              detail_label:detailLabel,
+              detail:detailLabel,
+              equipement:cause.equipement || cause.equipment || '',
+              sous_ensemble:cause.sous_ensemble || cause.sousEnsemble || '',
+              article:cause.article || '',
+              lot:cause.lot || '',
+              type_defaut:cause.type_defaut || cause.typeDefaut || '',
+              raison_cadence:cause.raison_cadence || cause.raisonCadence || '',
+              zone:cause.zone || '',
+              utilite:cause.utilite || cause.utility || '',
+              event_code:cause.event_code || cause.eventCode || '',
+              duree_min:Number(cause.duree_min ?? cause.minutes ?? cause.min ?? 0),
+              impact_qty:Number(cause.impact_qty ?? cause.impactQty ?? 0)
             };
           });
         },
@@ -4906,7 +5271,191 @@ const demoState = {
         // PATCH UX: remise à zéro du brouillon de cause
         resetCauseDraft(preserveType=false){
           const keepType=preserveType?this.causeDraft.type:'';
-          this.causeDraft={type:keepType,cat:'',sub:'',minutes:5};
+          this.causeDraft={
+            type:keepType,
+            cat:'',
+            sub:'',
+            cause5m:'',
+            detail:'',
+            detailLabel:'',
+            minutes:5,
+            equipement:'',
+            sous_ensemble:'',
+            article:'',
+            lot:'',
+            type_defaut:'',
+            raison_cadence:'',
+            zone:'',
+            utilite:''
+          };
+          this.$nextTick(()=>this.evtOnFormChange());
+        },
+        evtInitModule(){
+          const cfg=window.EVENTS_CONFIG;
+          this.evtConfigReady=Boolean(cfg);
+          const hasTaxonomy=Array.isArray(cfg?.taxonomy?.causes_5m)?cfg.taxonomy.causes_5m.length>0:false;
+          this.evtShowCause5m=this.evtConfigReady&&Boolean(this.causeDraft.cat)&&hasTaxonomy;
+          this.evtShowDetail=Boolean(this.causeDraft.cat)&&this.evtLastDetailCount>0;
+          this.evtUpdateDynamicState();
+        },
+        evtOnFormChange(){
+          const cfg=window.EVENTS_CONFIG;
+          this.evtConfigReady=Boolean(cfg);
+          const hasCauses=Array.isArray(cfg?.taxonomy?.causes_5m)?cfg.taxonomy.causes_5m.length>0:false;
+          this.evtShowCause5m=this.evtConfigReady&&Boolean(this.causeDraft.cat)&&hasCauses;
+          this.evtShowDetail=Boolean(this.causeDraft.cat)&&this.evtLastDetailCount>0;
+          this.evtSyncDetailLabel();
+          this.evtUpdateDynamicState();
+        },
+        evtHandleDetailsOptions(detail){
+          const items=Array.isArray(detail?.items)?detail.items:[];
+          const codes=items.map(item=>item.code);
+          this.evtLastDetailCount=Number(detail?.count??items.length??0);
+          if(this.causeDraft.detail && !codes.includes(this.causeDraft.detail)){
+            this.causeDraft.detail='';
+            this.causeDraft.detailLabel='';
+          }else if(this.causeDraft.detail && codes.includes(this.causeDraft.detail)){
+            const entry=items.find(item=>item.code===this.causeDraft.detail);
+            if(entry){this.causeDraft.detailLabel=entry.label||this.causeDraft.detailLabel||'';}
+          }
+          this.evtShowDetail=Boolean(this.causeDraft.cat)&&this.evtLastDetailCount>0;
+          this.evtUpdateDynamicState();
+        },
+        evtSyncDetailLabel(){
+          if(!this.causeDraft.detail){
+            this.causeDraft.detailLabel='';
+            return;
+          }
+          if(this.causeDraft.detailLabel){
+            return;
+          }
+          const cfg=window.EVENTS_CONFIG;
+          const det=cfg?.taxonomy?.details||[];
+          const entry=det.find(item=>item.code===this.causeDraft.detail);
+          this.causeDraft.detailLabel=entry?.label||'';
+        },
+        evtShouldShowField(name){
+          const required=this.evtDynamicFields?.required||[];
+          const optional=this.evtDynamicFields?.optional||[];
+          return required.includes(name)||optional.includes(name);
+        },
+        evtIsRequired(name){
+          return (this.evtDynamicFields?.required||[]).includes(name);
+        },
+        evtFieldLabel(name){
+          const cfg=window.EVENTS_CONFIG;
+          const label=cfg?.fields?.[name]?.label;
+          if(label) return label;
+          switch(name){
+            case 'cause_5m':
+            case 'cause5m':
+              return 'Cause 5M';
+            case 'detail_code':
+            case 'detail':
+              return 'Détail';
+            default:
+              return name.replace(/_/g,' ');
+          }
+        },
+        evtCurrentFormState(){
+          return {
+            type:typeof evt_norm==='function'?evt_norm(this.causeDraft.type):String(this.causeDraft.type||''),
+            categorie:typeof evt_norm==='function'?evt_norm(this.causeDraft.cat):String(this.causeDraft.cat||''),
+            cause_5m:typeof evt_norm==='function'?evt_norm(this.causeDraft.cause5m):String(this.causeDraft.cause5m||''),
+            detail_code:typeof evt_norm==='function'?evt_norm(this.causeDraft.detail):String(this.causeDraft.detail||''),
+            equipement:typeof evt_norm==='function'?evt_norm(this.causeDraft.equipement):String(this.causeDraft.equipement||''),
+            sous_ensemble:typeof evt_norm==='function'?evt_norm(this.causeDraft.sous_ensemble):String(this.causeDraft.sous_ensemble||''),
+            article:typeof evt_norm==='function'?evt_norm(this.causeDraft.article):String(this.causeDraft.article||''),
+            lot:typeof evt_norm==='function'?evt_norm(this.causeDraft.lot):String(this.causeDraft.lot||''),
+            type_defaut:typeof evt_norm==='function'?evt_norm(this.causeDraft.type_defaut):String(this.causeDraft.type_defaut||''),
+            raison_cadence:typeof evt_norm==='function'?evt_norm(this.causeDraft.raison_cadence):String(this.causeDraft.raison_cadence||''),
+            zone:typeof evt_norm==='function'?evt_norm(this.causeDraft.zone):String(this.causeDraft.zone||''),
+            utilite:typeof evt_norm==='function'?evt_norm(this.causeDraft.utilite):String(this.causeDraft.utilite||'')
+          };
+        },
+        evtUpdateDynamicState(){
+          if(typeof evt_applyRules!=='function'){
+            this.evtDynamicFields={required:[],optional:[]};
+            return;
+          }
+          const cfg=window.EVENTS_CONFIG||{};
+          const rr=evt_applyRules(this.evtCurrentFormState(),cfg.rules||[]);
+          this.evtDynamicFields=rr;
+          const keep=new Set([...(rr.required||[]),...(rr.optional||[])]);
+          ['equipement','sous_ensemble','article','lot','type_defaut','raison_cadence','zone','utilite'].forEach(field=>{
+            if(!keep.has(field) && this.causeDraft[field]){
+              this.causeDraft[field]='';
+            }
+          });
+        },
+        evtLookupDetailLabel(code){
+          if(!code) return '';
+          const cfg=window.EVENTS_CONFIG;
+          const det=cfg?.taxonomy?.details||[];
+          const entry=det.find(item=>item.code===code);
+          return entry?.label||'';
+        },
+        evtNormalizeEvent(cause,hour,date){
+          const detailCode=cause.detail_code || cause.detailCode || cause.detail || '';
+          let detailLabel=cause.detail_label || cause.detailLabel || '';
+          if(detailCode && !detailLabel){
+            detailLabel=this.evtLookupDetailLabel(detailCode);
+          }
+          const minutes=Number(cause.duree_min ?? cause.minutes ?? cause.min ?? 0);
+          return {
+            date_heure: `${date} ${hour.hh||''}`.trim(),
+            type: cause.type || cause.stopType || '',
+            categorie: cause.cat || cause.category || '',
+            cause_5m: cause.cause_5m || cause.cause5m || '',
+            detail_code: detailCode,
+            detail_label: detailLabel,
+            equipement: cause.equipement || cause.equipment || '',
+            sous_ensemble: cause.sous_ensemble || cause.sousEnsemble || '',
+            article: cause.article || '',
+            lot: cause.lot || '',
+            type_defaut: cause.type_defaut || '',
+            raison_cadence: cause.raison_cadence || '',
+            zone: cause.zone || '',
+            utilite: cause.utilite || '',
+            duree_min: minutes,
+            impact_qty: Number(cause.impact_qty ?? cause.impactQty ?? 0),
+            commentaire: cause.comment || '',
+            event_code: cause.event_code || cause.eventCode || ''
+          };
+        },
+        evtCollectEvents(){
+          const hours=Array.isArray(this.state.heures)?this.state.heures:[];
+          const date=this.state.meta?.date||new Date().toISOString().slice(0,10);
+          const events=[];
+          hours.forEach(hour=>{
+            const list=hour.hh===this.currentHour.hh?this.normalizeCauses(this.currentHour.causes||[]):this.normalizeCauses(hour.causes||[]);
+            (list||[]).forEach(cause=>{
+              events.push(this.evtNormalizeEvent(cause,hour,date));
+            });
+          });
+          return events;
+        },
+        evtNextEventIndex(){
+          const events=this.evtCollectEvents();
+          return events.length+1;
+        },
+        evtExportColumns(){
+          const cfg=window.EVENTS_CONFIG;
+          return cfg?.export?.columns || [
+            'date_heure','type','categorie','cause_5m','detail_code','detail_label','equipement','sous_ensemble','article','lot','type_defaut','raison_cadence','zone','utilite','duree_min','impact_qty','commentaire'
+          ];
+        },
+        evtMakeExportObject(ev){
+          const cols=this.evtExportColumns();
+          const row={};
+          cols.forEach(col=>{row[col]=ev[col]??'';});
+          return row;
+        },
+        evtOnDetailChange(event){
+          const value=event?.target?.value||'';
+          this.causeDraft.detail=value;
+          this.causeDraft.detailLabel=event?.target?.selectedOptions?.[0]?.textContent||'';
+          this.evtOnFormChange();
         },
         // PATCH UX: total des minutes de causes pour l'heure courante
         currentCauseMinutes(){
@@ -4925,6 +5474,25 @@ const demoState = {
             pushToast('Causes','Sélectionner type, catégorie et sous-catégorie','danger');
             return;
           }
+          const state=this.evtCurrentFormState();
+          const cfg=window.EVENTS_CONFIG||{};
+          const rr=typeof evt_applyRules==='function'?evt_applyRules(state,cfg.rules||[]):{required:[],optional:[]};
+          const missing=[];
+          (rr.required||[]).forEach(field=>{
+            const key=field==='detail_code'?'detail_code':field;
+            const value=state[key]||'';
+            if(!value){missing.push(this.evtFieldLabel(field));}
+          });
+          if(missing.length){
+            pushToast('Causes',`Champs requis : ${missing.join(', ')}`,'danger');
+            return;
+          }
+          let detailLabel=this.causeDraft.detailLabel||'';
+          const detailCode=this.causeDraft.detail||'';
+          if(detailCode && !detailLabel){
+            detailLabel=this.evtLookupDetailLabel(detailCode);
+          }
+          const cause5m=this.causeDraft.cause5m||'';
           const requested=Math.max(0,Number(this.causeDraft.minutes||0));
           if(!requested){
             pushToast('Causes','Minutes obligatoires','danger');
@@ -4932,7 +5500,32 @@ const demoState = {
           }
           const available=Math.max(0,this.currentHourMetrics.toJustify - this.currentCauseMinutes());
           const minutes=available>0?Math.min(requested,available):requested;
-          const payload={uid:crypto.randomUUID(),type,cat,sub,minutes,comment:''};
+          const eventIndex=this.evtNextEventIndex();
+          const eventCode=typeof evt_genEventCode==='function'?evt_genEventCode(cfg,{...state,type, categorie:cat},eventIndex):'';
+          const payload={
+            uid:crypto.randomUUID(),
+            type,
+            cat,
+            sub,
+            minutes,
+            comment:'',
+            cause_5m:cause5m,
+            cause5m,
+            detail_code:detailCode,
+            detail_label:detailLabel,
+            detail:detailLabel,
+            equipement:state.equipement,
+            sous_ensemble:state.sous_ensemble,
+            article:state.article,
+            lot:state.lot,
+            type_defaut:state.type_defaut,
+            raison_cadence:state.raison_cadence,
+            zone:state.zone,
+            utilite:state.utilite,
+            event_code:eventCode,
+            duree_min:minutes,
+            impact_qty:0
+          };
           this.currentHour.causes=[...this.currentHour.causes,payload];
           this.resetCauseDraft(true);
           this.recalcCurrent();
@@ -5468,16 +6061,33 @@ const demoState = {
         notifyShift(id){pushToast('Notification',`Equipe ${id} informée`,'success');},
         openChat(){pushToast('Chat','Chat collaboratif à venir','info');},
         exportJSON(){
-          const blob=this.buildDayJSONBlob();
-          const line=this.state.meta?.line||'L';
-          const date=this.state.meta?.date||new Date().toISOString().slice(0,10);
-          this.downloadBlob(`Pilotage_${line}_${date}.json`,blob);
+          const events=this.evtCollectEvents();
+          const rows=events.map(ev=>this.evtMakeExportObject(ev));
+          const cfg=window.EVENTS_CONFIG||{};
+          const lineName=this.state.meta?.line||this.settings.lineName||'LXX';
+          const rawDate=this.state.meta?.date||new Date().toISOString().slice(0,10);
+          const safeDate=(rawDate||'').replace(/[^0-9]/g,'')||new Date().toISOString().slice(0,10).replace(/[^0-9]/g,'');
+          const pattern=(cfg.export?.filename_pattern||'{LIGNE}_{DATE}');
+          const outName=pattern.replace('{LIGNE}',(lineName||'LXX').replace(/\s+/g,'')||'LXX').replace('{DATE}',safeDate||'YYYYMMDD');
+          const blob=new Blob([JSON.stringify(rows,null,2)],{type:'application/json'});
+          this.downloadBlob(`${outName}.json`,blob);
         },
         exportCSV(){
-          const blob=this.buildDayCSVBlob();
-          const date=this.state.meta?.date||new Date().toISOString().slice(0,10);
-          const line=this.state.meta?.line||'L';
-          this.downloadBlob(`Pilotage_${line}_${date}.csv`,blob);
+          const events=this.evtCollectEvents();
+          const cfg=window.EVENTS_CONFIG||{};
+          const cols=this.evtExportColumns();
+          const lines=[cols.join(';')];
+          events.forEach(ev=>{
+            lines.push(typeof evt_mapForExport==='function'?evt_mapForExport(cfg,ev):cols.map(key=>ev[key]??'').join(';'));
+          });
+          const csvContent=`﻿${lines.join('\n')}`;
+          const blob=new Blob([csvContent],{type:'text/csv;charset=utf-8;'});
+          const lineName=this.state.meta?.line||this.settings.lineName||'LXX';
+          const rawDate=this.state.meta?.date||new Date().toISOString().slice(0,10);
+          const safeDate=(rawDate||'').replace(/[^0-9]/g,'')||new Date().toISOString().slice(0,10).replace(/[^0-9]/g,'');
+          const pattern=(cfg.export?.filename_pattern||'{LIGNE}_{DATE}');
+          const outName=pattern.replace('{LIGNE}',(lineName||'LXX').replace(/\s+/g,'')||'LXX').replace('{DATE}',safeDate||'YYYYMMDD');
+          this.downloadBlob(`${outName}.csv`,blob);
         },
         exportParetoCSV(){
           const hours=Array.isArray(this.hoursForTeam)?this.hoursForTeam:[];
