@@ -819,6 +819,63 @@ Puis ouvrir http://localhost:8000/
           <p class="text-sm text-slate-500 dark:text-slate-400" x-show="!storage.supported">API File System Access indisponible — utilisation des téléchargements classiques.</p>
           <p class="text-sm text-slate-500 dark:text-slate-400" x-show="storage.dirHandle" x-cloak>Le dossier sélectionné sera utilisé pour les prochains exports.</p>
         </section>
+        <div class="mt-8 rounded-3xl border border-slate-200 dark:border-slate-800 p-4 space-y-4 bg-white/80 dark:bg-slate-900/50"
+             x-data="rulesModule()">
+          <header class="flex items-center justify-between">
+            <div>
+              <h3 class="font-semibold text-[clamp(1.05rem,0.65vw+0.7rem,1.35rem)]">Règles dynamiques</h3>
+              <p class="text-sm text-slate-500 dark:text-slate-400">when → requires + defaults</p>
+            </div>
+            <div class="flex gap-2">
+              <button type="button" class="px-3 py-1 rounded-lg bg-slate-200 dark:bg-slate-800 text-xs" @click="resetToSample()">Exemple</button>
+              <button type="button" class="px-3 py-1 rounded-lg bg-emerald-500/80 hover:bg-emerald-400 text-white text-xs font-semibold" @click="save()">Sauver</button>
+              <button type="button" class="px-3 py-1 rounded-lg bg-primary text-white text-xs font-semibold" @click="publish()">Publier</button>
+            </div>
+          </header>
+
+          <!-- Éditeur JSON -->
+          <label class="flex flex-col gap-2">
+            <span class="text-xs uppercase tracking-wide text-slate-500">JSON des règles</span>
+            <textarea x-model="rulesJson" class="w-full h-48 px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950/60 font-mono text-xs"></textarea>
+            <p class="text-xs text-slate-500" x-text="status"></p>
+          </label>
+
+          <!-- Simulateur -->
+          <div class="grid md:grid-cols-4 gap-3">
+            <label class="flex flex-col gap-1">
+              <span class="text-xs uppercase text-slate-500">Type</span>
+              <select x-model="sel.type" @change="onType()" class="px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950/60">
+                <option value="">Sélectionner</option>
+                <template x-for="t in stopTypes" :key="t"><option :value="t" x-text="t"></option></template>
+              </select>
+            </label>
+            <label class="flex flex-col gap-1">
+              <span class="text-xs uppercase text-slate-500">Catégorie</span>
+              <select x-model="sel.category" @change="onCat()" class="px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950/60">
+                <option value="">Sélectionner</option>
+                <template x-for="c in cats" :key="c"><option :value="c" x-text="c"></option></template>
+              </select>
+            </label>
+            <label class="flex flex-col gap-1">
+              <span class="text-xs uppercase text-slate-500">Cause</span>
+              <select x-model="sel.cause" class="px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950/60">
+                <option value="">Sélectionner</option>
+                <template x-for="s in subs" :key="s"><option :value="s" x-text="s"></option></template>
+              </select>
+            </label>
+            <div class="flex items-end">
+              <button type="button" class="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-800" @click="test()">Tester</button>
+            </div>
+          </div>
+
+          <!-- Résultat test -->
+          <div class="rounded-2xl border border-slate-200 dark:border-slate-800 px-4 py-3">
+            <p class="text-xs uppercase tracking-wide text-slate-500">Champs requis</p>
+            <p class="text-sm font-semibold" x-text="testResult.requires?.length ? testResult.requires.join(', ') : '—'"></p>
+            <p class="text-xs uppercase tracking-wide text-slate-500 mt-2">Defaults appliqués</p>
+            <pre class="text-xs whitespace-pre-wrap" x-text="JSON.stringify(testResult.defaults||{}, null, 2)"></pre>
+          </div>
+        </div>
         <!-- REMOVED: categories & sous-categories manager -->
         <!-- REMOVED: events v1 configuration editor -->
       </div>
@@ -5461,6 +5518,111 @@ const demoState = {
         },
       }));
     });
+
+    function buildStopSchemaFromTaxonomy(){
+      const store = typeof getCategoryStore==='function' ? getCategoryStore() : null;
+      const schema = {};
+      (store?.stopTypes||[]).forEach(t => schema[t] = {});
+      (store?.categories||[]).forEach(cat=>{
+        const t = (cat.type || 'Autres');
+        schema[t] = schema[t] || {};
+        schema[t][cat.label] = (cat.sub||[]).map(s=>s.label);
+      });
+      return schema;
+    }
+    function loadRules(){
+      try { return JSON.parse(localStorage.getItem('pp:params:rules') || '{"rules":[]}'); }
+      catch { return { rules: [] }; }
+    }
+    function saveRules(json){
+      localStorage.setItem('pp:params:rules', JSON.stringify(json));
+    }
+    function testRules(sel){
+      const r = loadRules().rules || [];
+      const hit = r.find(x =>
+        (!x.when?.type || x.when.type === sel.type) &&
+        (!x.when?.category || x.when.category === sel.category) &&
+        (!x.when?.cause || x.when.cause === sel.cause)
+      );
+      return hit ? { requires: hit.requires||[], defaults: hit.defaults||{} } : { requires:[], defaults:{} };
+    }
+    function loadReferentiels(){
+      try { return JSON.parse(localStorage.getItem('pp:params:refs') || '{}'); }
+      catch { return {}; }
+    }
+    function rulesModule(){
+      return {
+        rulesJson: JSON.stringify(loadRules(), null, 2),
+        status: '',
+        sel: { type:'', category:'', cause:'' },
+        stopTypes: (typeof getCategoryStore==='function' ? (getCategoryStore()?.stopTypes||[]) : []),
+        cats: [],
+        subs: [],
+        testResult: { requires:[], defaults:{} },
+        onType(){
+          const store = typeof getCategoryStore==='function' ? getCategoryStore() : null;
+          const t = this.sel.type;
+          this.cats = [];
+          this.subs = [];
+          if(!t || !store) return;
+          // extrait catégories pour ce type
+          const labels = [];
+          (store.categories||[]).forEach(c => { if((c.type||'Autres')===t) labels.push(c.label); });
+          this.cats = labels;
+          this.sel.category = '';
+          this.sel.cause = '';
+        },
+        onCat(){
+          const store = typeof getCategoryStore==='function' ? getCategoryStore() : null;
+          const t = this.sel.type, c = this.sel.category;
+          this.subs = [];
+          if(!t || !c || !store) return;
+          const cat = (store.categories||[]).find(x => x.label===c && (x.type||'Autres')===t);
+          this.subs = (cat?.sub||[]).map(s=>s.label);
+          this.sel.cause = '';
+        },
+        test(){
+          this.testResult = testRules(this.sel);
+        },
+        save(){
+          try {
+            const obj = JSON.parse(this.rulesJson||'{}');
+            if(!obj.rules || !Array.isArray(obj.rules)) throw new Error('Le JSON doit contenir {"rules":[...]}');
+            saveRules(obj);
+            this.status = 'Règles sauvegardées.';
+          } catch(e){
+            this.status = 'Erreur JSON: ' + e.message;
+          }
+        },
+        publish(){
+          try{
+            const obj = JSON.parse(this.rulesJson||'{}');
+            if(!obj.rules || !Array.isArray(obj.rules)) throw new Error('Le JSON doit contenir {"rules":[...]}');
+            saveRules(obj);
+            const stopSchema = buildStopSchemaFromTaxonomy();
+            const rules = obj;
+            const referentiels = loadReferentiels(); // placeholder
+            window.dispatchEvent(new CustomEvent('prodtrack:params-changed', { detail:{ stopSchema, rules, referentiels } }));
+            this.status = 'Publié.';
+          }catch(e){
+            this.status = 'Erreur: ' + e.message;
+          }
+        },
+        resetToSample(){
+          const sample = {
+            "rules":[
+              {
+                "when":{"type":"Disponibilité","category":"Panne équipement","cause":"Pompe"},
+                "requires":["equipement","sousEnsemble"],
+                "defaults":{"minutes":5}
+              }
+            ]
+          };
+          this.rulesJson = JSON.stringify(sample, null, 2);
+          this.status = 'Exemple chargé.';
+        }
+      };
+    }
   </script>
   <script>
   (() => {
