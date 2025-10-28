@@ -1,0 +1,1246 @@
+<!DOCTYPE html>
+<html lang="fr" class="h-full bg-slate-950 text-slate-100">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ProdTrack · Paramétrage</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'ui-sans-serif', 'system-ui']
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    .density-compact { font-size: 0.95rem; }
+    .density-standard { font-size: 1rem; }
+    .density-large { font-size: 1.05rem; }
+    .glass-1 [class*="bg-white/"], .glass-1 [class*="bg-slate-8"], .glass-1 [class*="bg-slate-9"] { background-color: rgba(15, 23, 42, 0.55) !important; }
+    .glass-2 [class*="bg-white/"], .glass-2 [class*="bg-slate-8"], .glass-2 [class*="bg-slate-9"] { background-color: rgba(15, 23, 42, 0.65) !important; }
+    .glass-3 [class*="bg-white/"], .glass-3 [class*="bg-slate-8"], .glass-3 [class*="bg-slate-9"] { background-color: rgba(15, 23, 42, 0.78) !important; }
+    .reduce-motion * { transition-duration: 0ms !important; animation-duration: 0ms !important; }
+  </style>
+  <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+</head>
+<body class="min-h-full bg-slate-950/95">
+  <div class="min-h-screen" x-data="paramApp()" x-init="init()" :class="[displaySettings.density, 'glass-'+displaySettings.glass]">
+    <template x-if="toast.visible">
+      <div class="fixed top-4 inset-x-0 flex justify-center z-50">
+        <div class="px-4 py-2 rounded-xl backdrop-blur-md bg-slate-800/90 border border-white/10 shadow-lg" :class="{
+          'text-emerald-200 border-emerald-400/40': toast.type==='success',
+          'text-amber-200 border-amber-400/40': toast.type==='warning',
+          'text-rose-200 border-rose-400/40': toast.type==='error',
+          'text-slate-200 border-white/20': toast.type==='info'
+        }" role="status" x-text="toast.message"></div>
+      </div>
+    </template>
+
+    <header class="backdrop-blur-xl bg-slate-900/70 border-b border-white/10 sticky top-0 z-40">
+      <div class="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
+        <div>
+          <p class="text-xs uppercase tracking-widest text-slate-500">ProdTrack</p>
+          <h1 class="text-lg font-semibold text-slate-100">Centre de paramétrage</h1>
+        </div>
+        <div class="flex items-center gap-2">
+          <button type="button" @click="restoreDefaults" class="px-3 py-2 rounded-xl bg-white/10 border border-white/20 text-xs font-medium text-slate-200 hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-emerald-400/60">Restaurer défauts</button>
+          <button type="button" @click="publish" class="px-4 py-2 rounded-xl bg-emerald-500/80 hover:bg-emerald-400 text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-400/70">Publier</button>
+        </div>
+      </div>
+    </header>
+
+    <div class="max-w-6xl mx-auto px-4 pt-6">
+      <nav class="flex gap-2 overflow-x-auto pb-4" aria-label="Sections de paramétrage">
+        <template x-for="tab in tabs" :key="tab">
+          <button type="button" @click="activeTab = tab" class="px-4 py-2 rounded-2xl backdrop-blur-md border text-xs font-semibold transition focus:outline-none focus:ring-2" :class="activeTab === tab ? 'bg-emerald-500/20 border-emerald-400/30 text-emerald-100' : 'bg-white/5 border-white/10 text-slate-300 hover:bg-white/10'" x-text="tab"></button>
+        </template>
+      </nav>
+
+      <!-- Tab Taxonomie -->
+      <section x-show="activeTab === 'Taxonomie'" x-transition class="space-y-6 pb-16" x-cloak>
+        <div class="grid md:grid-cols-2 gap-6">
+          <div class="rounded-2xl backdrop-blur-md bg-white/5 border border-white/10 p-6 space-y-4">
+            <header class="flex items-center justify-between">
+              <div>
+                <h2 class="text-sm font-semibold text-slate-200">Taxonomie Lean OEE</h2>
+                <p class="text-xs text-slate-400">Type → Catégorie → Cause → Détail.</p>
+              </div>
+              <button type="button" class="px-3 py-1.5 rounded-xl bg-white/10 border border-white/20 text-xs" @click="addType">+ Type</button>
+            </header>
+            <div class="space-y-4">
+              <template x-for="(type, typeIndex) in taxonomy.types" :key="type.id">
+                <div class="rounded-2xl bg-slate-900/60 border border-white/10 p-4 space-y-3">
+                  <div class="flex items-center gap-3">
+                    <label class="text-xs text-slate-400 w-20">Type</label>
+                    <input type="text" class="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400/60" x-model="type.name" @change="touchTaxonomy" />
+                    <button type="button" class="px-3 py-1 rounded-xl bg-rose-500/80 hover:bg-rose-500 text-xs" @click="removeType(typeIndex)">Supprimer</button>
+                  </div>
+                  <div class="space-y-3">
+                    <div class="flex items-center justify-between">
+                      <h3 class="text-xs font-semibold text-slate-300">Catégories</h3>
+                      <button type="button" class="px-2 py-1 rounded-lg bg-white/10 border border-white/10 text-xs" @click="addCategory(typeIndex)">+ Catégorie</button>
+                    </div>
+                    <template x-for="(category, catIndex) in type.categories" :key="category.id">
+                      <div class="rounded-xl bg-slate-800/60 border border-white/5 p-3 space-y-3">
+                        <div class="flex items-center gap-3">
+                          <label class="text-xs text-slate-400 w-24">Catégorie</label>
+                          <input type="text" class="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400/60" x-model="category.name" @change="touchTaxonomy" />
+                          <button type="button" class="px-2 py-1 rounded-lg bg-rose-500/80 hover:bg-rose-500 text-xs" @click="removeCategory(typeIndex, catIndex)">🗑</button>
+                        </div>
+                        <div class="space-y-2">
+                          <div class="flex items-center justify-between">
+                            <span class="text-xs text-slate-400">Causes</span>
+                            <button type="button" class="px-2 py-1 rounded-lg bg-white/10 border border-white/10 text-xs" @click="addCause(typeIndex, catIndex)">+ Cause</button>
+                          </div>
+                          <template x-for="(cause, causeIndex) in category.causes" :key="cause.id">
+                            <div class="rounded-lg bg-slate-900/60 border border-white/5 p-3 space-y-2">
+                              <div class="flex items-center gap-3">
+                                <label class="text-xs text-slate-500 w-20">Cause</label>
+                                <input type="text" class="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400/60" x-model="cause.name" @change="touchTaxonomy" />
+                                <button type="button" class="px-2 py-1 rounded-lg bg-rose-500/80 hover:bg-rose-500 text-xs" @click="removeCause(typeIndex, catIndex, causeIndex)">🗑</button>
+                              </div>
+                              <div class="space-y-2">
+                                <div class="flex items-center justify-between">
+                                  <span class="text-xs text-slate-500">Détails</span>
+                                  <button type="button" class="px-2 py-1 rounded-lg bg-white/10 border border-white/10 text-xs" @click="addDetail(typeIndex, catIndex, causeIndex)">+ Détail</button>
+                                </div>
+                                <template x-for="(detail, detailIndex) in cause.details" :key="detail.id">
+                                  <div class="flex items-center gap-3">
+                                    <input type="text" class="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400/60" x-model="detail.name" @change="touchTaxonomy" />
+                                    <input type="number" min="0" class="w-24 bg-white/5 border border-white/10 rounded-xl px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400/60" x-model.number="detail.defaultMinutes" @change="touchTaxonomy" placeholder="min" />
+                                    <button type="button" class="px-2 py-1 rounded-lg bg-rose-500/80 hover:bg-rose-500 text-xs" @click="removeDetail(typeIndex, catIndex, causeIndex, detailIndex)">🗑</button>
+                                  </div>
+                                </template>
+                              </div>
+                            </div>
+                          </template>
+                        </div>
+                      </div>
+                    </template>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <div class="rounded-2xl backdrop-blur-md bg-white/5 border border-white/10 p-6 space-y-4">
+            <header class="flex items-center justify-between">
+              <div>
+                <h2 class="text-sm font-semibold text-slate-200">Aperçu sélecteurs</h2>
+                <p class="text-xs text-slate-400">Vérifiez les listes chaînées.</p>
+              </div>
+              <button type="button" class="px-3 py-1.5 rounded-xl bg-white/10 border border-white/20 text-xs" @click="refreshDerived">Rafraîchir</button>
+            </header>
+            <div class="space-y-3">
+              <div>
+                <label class="text-xs text-slate-400">Type</label>
+                <select x-model="previewSelection.type" @change="updatePreviewSelection('type')" class="w-full bg-slate-900/70 border border-white/10 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400/60">
+                  <option value="">--</option>
+                  <template x-for="type in derived.stopSelectors.types" :key="'preview-type-'+type.id">
+                    <option :value="type.name" x-text="type.name"></option>
+                  </template>
+                </select>
+              </div>
+              <div>
+                <label class="text-xs text-slate-400">Catégorie</label>
+                <select x-model="previewSelection.category" @change="updatePreviewSelection('category')" class="w-full bg-slate-900/70 border border-white/10 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400/60">
+                  <option value="">--</option>
+                  <template x-for="category in derived.stopSelectors.categories" :key="'preview-cat-'+category.id">
+                    <option :value="category.name" x-text="category.name"></option>
+                  </template>
+                </select>
+              </div>
+              <div>
+                <label class="text-xs text-slate-400">Cause</label>
+                <select x-model="previewSelection.cause" @change="updatePreviewSelection('cause')" class="w-full bg-slate-900/70 border border-white/10 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400/60">
+                  <option value="">--</option>
+                  <template x-for="cause in derived.stopSelectors.causes" :key="'preview-cause-'+cause.id">
+                    <option :value="cause.name" x-text="cause.name"></option>
+                  </template>
+                </select>
+              </div>
+              <div>
+                <label class="text-xs text-slate-400">Détail</label>
+                <select x-model="previewSelection.detail" class="w-full bg-slate-900/70 border border-white/10 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400/60">
+                  <option value="">--</option>
+                  <template x-for="detail in derived.stopSelectors.details" :key="'preview-detail-'+detail.id">
+                    <option :value="detail.name" x-text="detail.name"></option>
+                  </template>
+                </select>
+              </div>
+            </div>
+            <div class="rounded-2xl bg-slate-900/60 border border-white/10 p-4">
+              <h3 class="text-xs font-semibold text-slate-300 mb-2">Stop schema</h3>
+              <pre class="text-xs text-slate-400 whitespace-pre-wrap" x-text="JSON.stringify(derived.stopSchema, null, 2)"></pre>
+            </div>
+          </div>
+        </div>
+
+        <div class="rounded-2xl backdrop-blur-md bg-white/5 border border-white/10 p-6 space-y-4">
+          <header class="flex items-center justify-between">
+            <div>
+              <h2 class="text-sm font-semibold text-slate-200">Vues à plat</h2>
+              <p class="text-xs text-slate-400">Contrôle rapide.</p>
+            </div>
+            <button type="button" class="px-3 py-1.5 rounded-xl bg-white/10 border border-white/20 text-xs" @click="copyToClipboard(JSON.stringify(derived.flatCategories, null, 2))">Copier JSON</button>
+          </header>
+          <div class="grid md:grid-cols-2 gap-4">
+            <div class="rounded-2xl bg-slate-900/60 border border-white/10 p-4">
+              <h3 class="text-xs font-semibold text-slate-300 mb-2">Catégories</h3>
+              <pre class="text-xs text-slate-400 whitespace-pre-wrap" x-text="JSON.stringify(derived.flatCategories, null, 2)"></pre>
+            </div>
+            <div class="rounded-2xl bg-slate-900/60 border border-white/10 p-4">
+              <h3 class="text-xs font-semibold text-slate-300 mb-2">Type → Catégorie</h3>
+              <pre class="text-xs text-slate-400 whitespace-pre-wrap" x-text="JSON.stringify(derived.typeToCategory, null, 2)"></pre>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tab Règles -->
+      <section x-show="activeTab === 'Règles'" x-transition class="space-y-6 pb-16" x-cloak>
+        <div class="grid md:grid-cols-2 gap-6">
+          <div class="rounded-2xl backdrop-blur-md bg-white/5 border border-white/10 p-6 space-y-4">
+            <header class="flex items-center justify-between">
+              <div>
+                <h2 class="text-sm font-semibold text-slate-200">Règles dynamiques</h2>
+                <p class="text-xs text-slate-400">when → requires → defaults.</p>
+              </div>
+              <button type="button" class="px-3 py-1.5 rounded-xl bg-white/10 border border-white/20 text-xs" @click="addRule">+ Règle</button>
+            </header>
+            <template x-for="(rule, index) in rules.rules" :key="rule.id">
+              <div class="rounded-2xl bg-slate-900/60 border border-white/10 p-4 space-y-3">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs text-slate-400">Condition #{index+1}</span>
+                  <button type="button" class="px-2 py-1 rounded-lg bg-rose-500/80 hover:bg-rose-500 text-xs" @click="removeRule(index)">🗑</button>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                  <div>
+                    <label class="text-xs text-slate-400">Type</label>
+                    <input type="text" class="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-1.5 text-sm" x-model="rule.when.type" @change="touchRules" />
+                  </div>
+                  <div>
+                    <label class="text-xs text-slate-400">Catégorie</label>
+                    <input type="text" class="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-1.5 text-sm" x-model="rule.when.category" @change="touchRules" />
+                  </div>
+                  <div>
+                    <label class="text-xs text-slate-400">Cause</label>
+                    <input type="text" class="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-1.5 text-sm" x-model="rule.when.cause" @change="touchRules" />
+                  </div>
+                  <div>
+                    <label class="text-xs text-slate-400">Détail</label>
+                    <input type="text" class="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-1.5 text-sm" x-model="rule.when.detail" @change="touchRules" />
+                  </div>
+                </div>
+                <div class="space-y-2">
+                  <label class="text-xs text-slate-400">Champs requis</label>
+                  <div class="flex flex-wrap gap-2">
+                    <template x-for="field in availableFields" :key="field">
+                      <label class="flex items-center gap-2 px-2 py-1 rounded-xl bg-white/5 border border-white/10 text-xs">
+                        <input type="checkbox" class="accent-emerald-400" :value="field" x-model="rule.requires" @change="touchRules" />
+                        <span class="capitalize" x-text="field"></span>
+                      </label>
+                    </template>
+                  </div>
+                </div>
+                <div class="space-y-2">
+                  <label class="text-xs text-slate-400">Valeurs par défaut</label>
+                  <textarea class="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs text-slate-200 h-24" x-model="rule.defaultsJSON" @change="updateRuleDefaults(rule)" spellcheck="false"></textarea>
+                </div>
+              </div>
+            </template>
+          </div>
+
+          <div class="rounded-2xl backdrop-blur-md bg-white/5 border border-white/10 p-6 space-y-4">
+            <header class="flex items-center justify-between">
+              <div>
+                <h2 class="text-sm font-semibold text-slate-200">Test de règles</h2>
+                <p class="text-xs text-slate-400">Simulez une sélection.</p>
+              </div>
+              <button type="button" class="px-3 py-1.5 rounded-xl bg-white/10 border border-white/20 text-xs" @click="testRules">Tester</button>
+            </header>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="text-xs text-slate-400">Type</label>
+                <select class="w-full bg-slate-900/70 border border-white/10 rounded-xl px-3 py-2 text-sm" x-model="ruleTestSelection.type">
+                  <option value="">--</option>
+                  <template x-for="type in derived.stopSelectors.types" :key="'test-type-'+type.id">
+                    <option :value="type.name" x-text="type.name"></option>
+                  </template>
+                </select>
+              </div>
+              <div>
+                <label class="text-xs text-slate-400">Catégorie</label>
+                <select class="w-full bg-slate-900/70 border border-white/10 rounded-xl px-3 py-2 text-sm" x-model="ruleTestSelection.category">
+                  <option value="">--</option>
+                  <template x-for="category in derived.stopSelectors.categories" :key="'test-cat-'+category.id">
+                    <option :value="category.name" x-text="category.name"></option>
+                  </template>
+                </select>
+              </div>
+              <div>
+                <label class="text-xs text-slate-400">Cause</label>
+                <select class="w-full bg-slate-900/70 border border-white/10 rounded-xl px-3 py-2 text-sm" x-model="ruleTestSelection.cause">
+                  <option value="">--</option>
+                  <template x-for="cause in derived.stopSelectors.causes" :key="'test-cause-'+cause.id">
+                    <option :value="cause.name" x-text="cause.name"></option>
+                  </template>
+                </select>
+              </div>
+              <div>
+                <label class="text-xs text-slate-400">Détail</label>
+                <select class="w-full bg-slate-900/70 border border-white/10 rounded-xl px-3 py-2 text-sm" x-model="ruleTestSelection.detail">
+                  <option value="">--</option>
+                  <template x-for="detail in derived.stopSelectors.details" :key="'test-detail-'+detail.id">
+                    <option :value="detail.name" x-text="detail.name"></option>
+                  </template>
+                </select>
+              </div>
+            </div>
+            <div class="rounded-2xl bg-slate-900/60 border border-white/10 p-4 space-y-2">
+              <div>
+                <span class="text-xs text-slate-400">Sélection</span>
+                <pre class="text-xs text-slate-300" x-text="JSON.stringify(ruleTestSelection, null, 2)"></pre>
+              </div>
+              <div>
+                <span class="text-xs text-slate-400">Champs requis</span>
+                <pre class="text-xs text-emerald-200" x-text="JSON.stringify(ruleTestResult.required, null, 2)"></pre>
+              </div>
+              <div>
+                <span class="text-xs text-slate-400">Valeurs par défaut</span>
+                <pre class="text-xs text-slate-200" x-text="JSON.stringify(ruleTestResult.defaults, null, 2)"></pre>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tab Référentiels -->
+      <section x-show="activeTab === 'Référentiels'" x-transition class="space-y-6 pb-16" x-cloak>
+        <template x-for="ref in referentialList" :key="ref.id">
+          <div class="rounded-2xl backdrop-blur-md bg-white/5 border border-white/10 p-6 space-y-4">
+            <header class="flex items-center justify-between">
+              <div>
+                <h2 class="text-sm font-semibold text-slate-200" x-text="ref.label"></h2>
+                <p class="text-xs text-slate-400" x-text="ref.description"></p>
+              </div>
+              <div class="flex gap-2">
+                <label class="px-3 py-1.5 rounded-xl bg-white/10 border border-white/20 text-xs cursor-pointer">
+                  Import CSV
+                  <input type="file" class="hidden" accept=".csv" @change="importCSV($event, ref.id)" />
+                </label>
+                <button type="button" class="px-3 py-1.5 rounded-xl bg-white/10 border border-white/20 text-xs" @click="exportCSV(ref.id)">Export CSV</button>
+                <button type="button" class="px-3 py-1.5 rounded-xl bg-white/10 border border-white/20 text-xs" @click="addReferentialRow(ref.id)">+ Ligne</button>
+              </div>
+            </header>
+            <div class="overflow-x-auto">
+              <table class="w-full text-left text-sm text-slate-100">
+                <thead>
+                  <tr class="text-xs text-slate-400">
+                    <template x-for="col in ref.columns" :key="col.key">
+                      <th class="px-3 py-2" x-text="col.label"></th>
+                    </template>
+                    <th class="px-3 py-2 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template x-for="(row, rowIndex) in referentials[ref.id]" :key="row.id">
+                    <tr class="border-t border-white/10">
+                      <template x-for="col in ref.columns" :key="col.key">
+                        <td class="px-3 py-2">
+                          <input type="text" class="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400/60" x-model="row[col.key]" @change="touchReferentials" />
+                        </td>
+                      </template>
+                      <td class="px-3 py-2 text-right">
+                        <button type="button" class="px-3 py-1 rounded-xl bg-rose-500/80 hover:bg-rose-500 text-xs" @click="removeReferentialRow(ref.id, rowIndex)">🗑</button>
+                      </td>
+                    </tr>
+                  </template>
+                  <tr x-show="!referentials[ref.id].length">
+                    <td :colspan="ref.columns.length + 1" class="px-3 py-6 text-center text-xs text-slate-500">Aucune donnée.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </template>
+      </section>
+
+      <!-- Tab Affichage -->
+      <section x-show="activeTab === 'Affichage'" x-transition class="space-y-6 pb-16" x-cloak>
+        <div class="rounded-2xl backdrop-blur-md bg-white/5 border border-white/10 p-6 space-y-4">
+          <header>
+            <h2 class="text-sm font-semibold text-slate-200">Préférences d'affichage</h2>
+            <p class="text-xs text-slate-400">Thème, densité, effets.</p>
+          </header>
+          <div class="grid md:grid-cols-2 gap-6">
+            <div class="space-y-3">
+              <label class="text-xs text-slate-400">Densité</label>
+              <div class="flex gap-2">
+                <template x-for="option in densityOptions" :key="option.value">
+                  <button type="button" class="px-3 py-1.5 rounded-xl border text-xs" :class="displaySettings.density === option.value ? 'bg-emerald-500/30 border-emerald-400/40 text-emerald-100' : 'bg-white/10 border-white/20 text-slate-300'" @click="setDensity(option.value)" x-text="option.label"></button>
+                </template>
+              </div>
+            </div>
+            <div class="space-y-3">
+              <label class="text-xs text-slate-400">Thème sombre</label>
+              <label class="flex items-center gap-3 px-4 py-2 rounded-2xl bg-slate-900/60 border border-white/10 text-sm">
+                <input type="checkbox" class="accent-emerald-400" x-model="displaySettings.dark" @change="applyTheme" />
+                <span class="text-slate-200">Activer</span>
+              </label>
+            </div>
+            <div class="space-y-3">
+              <label class="text-xs text-slate-400">Intensité du glass</label>
+              <input type="range" min="1" max="3" class="w-full" x-model.number="displaySettings.glass" @input="applyGlass" />
+              <p class="text-[11px] text-slate-500">Ajuste la transparence.</p>
+            </div>
+            <div class="space-y-3">
+              <label class="text-xs text-slate-400">Animations réduites</label>
+              <label class="flex items-center gap-3 px-4 py-2 rounded-2xl bg-slate-900/60 border border-white/10 text-sm">
+                <input type="checkbox" class="accent-emerald-400" x-model="displaySettings.reduceMotion" @change="applyMotion" />
+                <span class="text-slate-200">Limiter les animations</span>
+              </label>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tab Exports -->
+      <section x-show="activeTab === 'Exports'" x-transition class="space-y-6 pb-16" x-cloak>
+        <div class="grid md:grid-cols-2 gap-6">
+          <div class="rounded-2xl backdrop-blur-md bg-white/5 border border-white/10 p-6 space-y-4">
+            <header>
+              <h2 class="text-sm font-semibold text-slate-200">Paramètres d'export</h2>
+              <p class="text-xs text-slate-400">CSV & JSON.</p>
+            </header>
+            <div class="space-y-3">
+              <label class="text-xs text-slate-400">Séparateur CSV</label>
+              <input type="text" class="w-24 bg-white/5 border border-white/10 rounded-xl px-3 py-1.5 text-sm" x-model="exportSettings.separator" @change="touchExports" />
+            </div>
+            <div class="space-y-3">
+              <label class="text-xs text-slate-400">Colonnes (ordre)</label>
+              <textarea class="w-full h-24 bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs" x-model="exportSettings.columnsText" @change="updateExportColumns" spellcheck="false"></textarea>
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="text-xs text-slate-400">Préfixe fichier</label>
+                <input type="text" class="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-1.5 text-sm" x-model="exportSettings.filePrefix" @change="touchExports" />
+              </div>
+              <div>
+                <label class="text-xs text-slate-400">Pattern</label>
+                <input type="text" class="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-1.5 text-sm" x-model="exportSettings.filenamePattern" @change="touchExports" />
+              </div>
+              <div>
+                <label class="text-xs text-slate-400">Rétention (jours)</label>
+                <input type="number" min="1" class="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-1.5 text-sm" x-model.number="exportSettings.retentionDays" @change="touchExports" />
+              </div>
+            </div>
+            <div class="flex flex-wrap gap-3 pt-2">
+              <button type="button" class="px-4 py-2 rounded-xl bg-emerald-500/80 hover:bg-emerald-400 text-xs font-semibold text-slate-900" @click="exportParamsJSON">Export JSON</button>
+              <label class="px-4 py-2 rounded-xl bg-white/10 border border-white/20 text-xs font-semibold text-slate-200 cursor-pointer">
+                Import JSON
+                <input type="file" class="hidden" accept="application/json" @change="importParamsJSON" />
+              </label>
+            </div>
+          </div>
+
+          <div class="rounded-2xl backdrop-blur-md bg-white/5 border border-white/10 p-6 space-y-4">
+            <header>
+              <h2 class="text-sm font-semibold text-slate-200">Aperçu exports</h2>
+              <p class="text-xs text-slate-400">Validation rapide.</p>
+            </header>
+            <div class="rounded-2xl bg-slate-900/60 border border-white/10 p-4">
+              <pre class="text-xs text-slate-400 whitespace-pre-wrap" x-text="JSON.stringify(exportSettings, null, 2)"></pre>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tab Sécurité -->
+      <section x-show="activeTab === 'Sécurité'" x-transition class="space-y-6 pb-16" x-cloak>
+        <div class="rounded-2xl backdrop-blur-md bg-white/5 border border-white/10 p-6 space-y-4">
+          <header>
+            <h2 class="text-sm font-semibold text-slate-200">Sécurité & confidentialité</h2>
+            <p class="text-xs text-slate-400">Anonymisation, reset.</p>
+          </header>
+          <div class="space-y-3">
+            <label class="flex items-center gap-3 px-4 py-2 rounded-2xl bg-slate-900/60 border border-white/10 text-sm">
+              <input type="checkbox" class="accent-emerald-400" x-model="security.anonymize" @change="touchSecurity" />
+              <span class="text-slate-200">Anonymiser les exports</span>
+            </label>
+          </div>
+          <div class="space-y-3">
+            <label class="text-xs text-slate-400">Version de schéma</label>
+            <input type="text" class="w-40 bg-white/5 border border-white/10 rounded-xl px-3 py-1.5 text-sm" x-model="security.schemaVersion" readonly />
+          </div>
+          <div class="space-y-3">
+            <p class="text-xs text-slate-400">Réinitialisation</p>
+            <button type="button" class="px-4 py-2 rounded-xl bg-rose-500/80 hover:bg-rose-500 text-xs font-semibold" @click="confirmReset">Réinitialiser la configuration</button>
+            <template x-if="resetDiff">
+              <div class="rounded-2xl bg-slate-900/60 border border-white/10 p-4">
+                <h3 class="text-xs font-semibold text-slate-300 mb-2">Diff</h3>
+                <pre class="text-xs text-slate-400 whitespace-pre-wrap" x-text="resetDiff"></pre>
+              </div>
+            </template>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    function paramApp() {
+      const DEFAULT_PARAMS = {
+        taxonomy: {
+          types: [
+            {
+              id: 'type-1',
+              name: 'Disponibilité',
+              categories: [
+                {
+                  id: 'cat-1',
+                  name: 'Panne équipement',
+                  causes: [
+                    {
+                      id: 'cause-1',
+                      name: 'Pompe',
+                      details: [
+                        { id: 'detail-1', name: 'Fuite', defaultMinutes: 5 },
+                        { id: 'detail-2', name: 'Bouchée', defaultMinutes: 7 }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              id: 'type-2',
+              name: 'Performance',
+              categories: [
+                {
+                  id: 'cat-2',
+                  name: 'Vitesse réduite',
+                  causes: [
+                    {
+                      id: 'cause-2',
+                      name: 'Réglage',
+                      details: [
+                        { id: 'detail-3', name: 'Format', defaultMinutes: 3 }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        rules: {
+          rules: [
+            {
+              id: 'rule-1',
+              when: { type: 'Disponibilité', category: 'Panne équipement', cause: 'Pompe' },
+              requires: ['equipement', 'sousEnsemble'],
+              defaults: { minutes: 5 }
+            }
+          ]
+        },
+        referentials: {
+          equipements: [
+            { id: 'EQ-01', label: 'Remplisseuse' },
+            { id: 'EQ-02', label: 'Mirage' }
+          ],
+          sousEnsembles: [
+            { id: 'SE-01', label: 'Pompe A', equipementId: 'EQ-01' }
+          ],
+          articles: [
+            { id: 'ART-01', code: 'ART-01', label: 'Boîte 20' }
+          ],
+          defauts: [
+            { id: 'DEF-01', code: 'D01', label: 'Manquant' }
+          ]
+        },
+        display: {
+          density: 'density-standard',
+          dark: true,
+          glass: 2,
+          reduceMotion: false
+        },
+        exports: {
+          separator: ';',
+          columns: ['date_heure', 'type', 'categorie', 'cause', 'detail', 'equipement', 'sousEnsemble', 'minutes', 'commentaire'],
+          filePrefix: 'PRODTRACK',
+          filenamePattern: '{LIGNE}_{DATE}',
+          retentionDays: 30
+        },
+        security: {
+          anonymize: false,
+          schemaVersion: '1.0.0'
+        }
+      };
+
+      const REFERENTIALS_META = [
+        {
+          id: 'equipements',
+          label: 'Équipements',
+          description: 'Liste des équipements disponibles.',
+          columns: [
+            { key: 'id', label: 'ID' },
+            { key: 'label', label: 'Libellé' }
+          ]
+        },
+        {
+          id: 'sousEnsembles',
+          label: 'Sous-ensembles',
+          description: 'Sous-ensembles liés à un équipement.',
+          columns: [
+            { key: 'id', label: 'ID' },
+            { key: 'label', label: 'Libellé' },
+            { key: 'equipementId', label: 'Équipement ID' }
+          ]
+        },
+        {
+          id: 'articles',
+          label: 'Articles',
+          description: 'Catalogue articles / références.',
+          columns: [
+            { key: 'code', label: 'Code' },
+            { key: 'label', label: 'Libellé' }
+          ]
+        },
+        {
+          id: 'defauts',
+          label: 'Défauts',
+          description: 'Typologie de défauts qualité.',
+          columns: [
+            { key: 'code', label: 'Code' },
+            { key: 'label', label: 'Libellé' }
+          ]
+        }
+      ];
+
+      const bootstrapRules = DEFAULT_PARAMS.rules.rules.map(rule => ({
+        id: rule.id || crypto.randomUUID(),
+        when: Object.assign({}, rule.when || {}),
+        requires: Array.isArray(rule.requires) ? [...rule.requires] : [],
+        defaults: Object.assign({}, rule.defaults || {}),
+        defaultsJSON: JSON.stringify(rule.defaults || {}, null, 2)
+      }));
+      const bootstrapReferentials = {};
+      REFERENTIALS_META.forEach(meta => {
+        bootstrapReferentials[meta.id] = (DEFAULT_PARAMS.referentials[meta.id] || []).map(row => ({ id: row.id || row.code || crypto.randomUUID(), ...row }));
+      });
+
+      return {
+        tabs: ['Taxonomie', 'Règles', 'Référentiels', 'Affichage', 'Exports', 'Sécurité'],
+        activeTab: 'Taxonomie',
+        storeKey: 'prodtrack.params.v1',
+        taxonomy: JSON.parse(JSON.stringify(DEFAULT_PARAMS.taxonomy)),
+        rules: { rules: bootstrapRules },
+        referentials: bootstrapReferentials,
+        displaySettings: JSON.parse(JSON.stringify(DEFAULT_PARAMS.display)),
+        exportSettings: {
+          separator: DEFAULT_PARAMS.exports.separator,
+          columns: [...DEFAULT_PARAMS.exports.columns],
+          columnsText: DEFAULT_PARAMS.exports.columns.join('\n'),
+          filePrefix: DEFAULT_PARAMS.exports.filePrefix,
+          filenamePattern: DEFAULT_PARAMS.exports.filenamePattern,
+          retentionDays: DEFAULT_PARAMS.exports.retentionDays
+        },
+        security: JSON.parse(JSON.stringify(DEFAULT_PARAMS.security)),
+        toast: { visible: false, message: '', type: 'info', timer: null },
+        derived: {
+          stopSelectors: { types: [], categories: [], causes: [], details: [] },
+          flatCategories: [],
+          typeToCategory: [],
+          stopSchema: {}
+        },
+        previewSelection: { type: '', category: '', cause: '', detail: '' },
+        ruleTestSelection: { type: '', category: '', cause: '', detail: '' },
+        ruleTestResult: { required: [], defaults: {} },
+        availableFields: ['equipement', 'sousEnsemble', 'article', 'lot', 'typeDefaut', 'raisonCadence', 'zone', 'utilite'],
+        referentialList: REFERENTIALS_META,
+        densityOptions: [
+          { value: 'density-compact', label: 'Compact' },
+          { value: 'density-standard', label: 'Standard' },
+          { value: 'density-large', label: 'Large' }
+        ],
+        resetDiff: '',
+
+        init() {
+          this.load();
+          this.refreshDerived();
+          this.applyTheme();
+          this.applyGlass();
+          this.applyMotion();
+        },
+
+        load() {
+          const raw = localStorage.getItem(this.storeKey);
+          if (raw) {
+            try {
+              const parsed = JSON.parse(raw);
+              this.importState(parsed, { silent: true });
+              this.showToast('Configuration chargée.', 'info');
+            } catch (error) {
+              console.error('Lecture config', error);
+              this.showToast('Impossible de lire la configuration locale.', 'warning');
+            }
+          } else {
+            this.showToast('Initialisation par défaut.', 'info');
+          }
+        },
+
+        save() {
+          const payload = this.buildPayload();
+          localStorage.setItem(this.storeKey, JSON.stringify(payload));
+        },
+
+        buildPayload() {
+          return {
+            taxonomy: this.taxonomy,
+            rules: this.rules,
+            referentials: this.referentials,
+            display: this.displaySettings,
+            exports: {
+              separator: this.exportSettings.separator,
+              columns: [...this.exportSettings.columns],
+              filePrefix: this.exportSettings.filePrefix,
+              filenamePattern: this.exportSettings.filenamePattern,
+              retentionDays: this.exportSettings.retentionDays
+            },
+            security: this.security
+          };
+        },
+
+        importState(data, { silent = false } = {}) {
+          if (data.taxonomy) this.taxonomy = this.normalizeIds(data.taxonomy);
+          if (data.rules) this.rules = this.ensureRuleDefaults(data.rules);
+          if (data.referentials) this.referentials = this.ensureReferentials(data.referentials);
+          if (data.display) this.displaySettings = Object.assign({}, this.displaySettings, data.display);
+          if (data.exports) {
+            this.exportSettings.separator = data.exports.separator || ';';
+            this.exportSettings.columns = Array.isArray(data.exports.columns) ? data.exports.columns : [...DEFAULT_PARAMS.exports.columns];
+            this.exportSettings.columnsText = this.exportSettings.columns.join('\n');
+            this.exportSettings.filePrefix = data.exports.filePrefix || 'PRODTRACK';
+            this.exportSettings.filenamePattern = data.exports.filenamePattern || '{LIGNE}_{DATE}';
+            this.exportSettings.retentionDays = Number.isFinite(data.exports.retentionDays) ? data.exports.retentionDays : DEFAULT_PARAMS.exports.retentionDays;
+          }
+          if (data.security) this.security = Object.assign({}, this.security, data.security);
+          if (!silent) this.showToast('Configuration importée.', 'success');
+          this.refreshDerived();
+          this.save();
+        },
+
+        restoreDefaults() {
+          this.importState(JSON.parse(JSON.stringify(DEFAULT_PARAMS)));
+          this.showToast('Paramètres restaurés.', 'success');
+        },
+
+        exportParamsJSON() {
+          const blob = new Blob([JSON.stringify(this.buildPayload(), null, 2)], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `${this.exportSettings.filePrefix || 'PRODTRACK'}_params.json`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          this.showToast('Export JSON prêt.', 'success');
+        },
+
+        importParamsJSON(event) {
+          const file = event.target.files?.[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = () => {
+            try {
+              const parsed = JSON.parse(reader.result);
+              this.importState(parsed);
+            } catch (error) {
+              console.error('Import JSON', error);
+              this.showToast('JSON invalide.', 'error');
+            }
+          };
+          reader.readAsText(file);
+          event.target.value = '';
+        },
+
+        publish() {
+          const validation = this.validateTaxonomy(this.taxonomy);
+          if (!validation.ok) {
+            this.showToast(validation.message, 'error');
+            return;
+          }
+          const rulesValidation = this.validateRules();
+          if (!rulesValidation.ok) {
+            this.showToast(rulesValidation.message, 'error');
+            return;
+          }
+          const payload = this.buildPayload();
+          localStorage.setItem(this.storeKey, JSON.stringify(payload));
+          const stopSchema = this.buildStopSchemaFromTaxonomy();
+          window.dispatchEvent(new CustomEvent('prodtrack:params-changed', {
+            detail: {
+              stopSchema,
+              rules: this.rules.rules,
+              referentiels: this.referentials
+            }
+          }));
+          this.showToast('Configuration publiée.', 'success');
+        },
+
+        showToast(message, type = 'info', duration = 3000) {
+          clearTimeout(this.toast.timer);
+          this.toast.visible = true;
+          this.toast.message = message;
+          this.toast.type = type;
+          this.toast.timer = setTimeout(() => {
+            this.toast.visible = false;
+          }, duration);
+        },
+
+        touchTaxonomy() {
+          this.refreshDerived();
+          this.save();
+        },
+
+        addType() {
+          this.taxonomy.types.push({ id: crypto.randomUUID(), name: 'Nouveau type', categories: [] });
+          this.touchTaxonomy();
+        },
+
+        removeType(index) {
+          this.taxonomy.types.splice(index, 1);
+          this.touchTaxonomy();
+        },
+
+        addCategory(typeIndex) {
+          this.taxonomy.types[typeIndex].categories.push({ id: crypto.randomUUID(), name: 'Nouvelle catégorie', causes: [] });
+          this.touchTaxonomy();
+        },
+
+        removeCategory(typeIndex, catIndex) {
+          this.taxonomy.types[typeIndex].categories.splice(catIndex, 1);
+          this.touchTaxonomy();
+        },
+
+        addCause(typeIndex, catIndex) {
+          this.taxonomy.types[typeIndex].categories[catIndex].causes.push({ id: crypto.randomUUID(), name: 'Nouvelle cause', details: [] });
+          this.touchTaxonomy();
+        },
+
+        removeCause(typeIndex, catIndex, causeIndex) {
+          this.taxonomy.types[typeIndex].categories[catIndex].causes.splice(causeIndex, 1);
+          this.touchTaxonomy();
+        },
+
+        addDetail(typeIndex, catIndex, causeIndex) {
+          this.taxonomy.types[typeIndex].categories[catIndex].causes[causeIndex].details.push({ id: crypto.randomUUID(), name: 'Nouveau détail', defaultMinutes: 0 });
+          this.touchTaxonomy();
+        },
+
+        removeDetail(typeIndex, catIndex, causeIndex, detailIndex) {
+          this.taxonomy.types[typeIndex].categories[catIndex].causes[causeIndex].details.splice(detailIndex, 1);
+          this.touchTaxonomy();
+        },
+
+        refreshDerived() {
+          this.derived.stopSelectors = this.buildSelectors();
+          this.derived.flatCategories = this.buildFlatCategories();
+          this.derived.typeToCategory = this.buildTypeCategoryPairs();
+          this.derived.stopSchema = this.buildStopSchemaFromTaxonomy();
+          this.filterPreviewOptions();
+        },
+
+        buildSelectors() {
+          const types = [];
+          const categories = [];
+          const causes = [];
+          const details = [];
+          this.taxonomy.types.forEach(type => {
+            types.push({ id: type.id, name: type.name });
+            type.categories.forEach(category => {
+              categories.push({ id: category.id, name: category.name, type: type.name });
+              category.causes.forEach(cause => {
+                causes.push({ id: cause.id, name: cause.name, type: type.name, category: category.name });
+                cause.details.forEach(detail => {
+                  details.push({ id: detail.id, name: detail.name, type: type.name, category: category.name, cause: cause.name });
+                });
+              });
+            });
+          });
+          return { types, categories, causes, details };
+        },
+
+        buildFlatCategories() {
+          const rows = [];
+          this.taxonomy.types.forEach(type => {
+            type.categories.forEach(category => {
+              rows.push({
+                id: category.id,
+                label: category.name,
+                type: type.name,
+                sub: category.causes.map(cause => ({ id: cause.id, label: cause.name, defaultMinutes: (cause.details[0]?.defaultMinutes) || 0 }))
+              });
+            });
+          });
+          return rows;
+        },
+
+        buildTypeCategoryPairs() {
+          const pairs = [];
+          this.taxonomy.types.forEach(type => {
+            type.categories.forEach(category => {
+              pairs.push({ type: type.name, category: category.name });
+            });
+          });
+          return pairs;
+        },
+
+        buildStopSchemaFromTaxonomy() {
+          const schema = {};
+          this.taxonomy.types.forEach(type => {
+            schema[type.name] = {};
+            type.categories.forEach(category => {
+              schema[type.name][category.name] = category.causes.map(cause => cause.name);
+            });
+          });
+          return schema;
+        },
+
+        updatePreviewSelection(changed) {
+          if (changed === 'type') {
+            this.previewSelection.category = '';
+            this.previewSelection.cause = '';
+            this.previewSelection.detail = '';
+          }
+          if (changed === 'category') {
+            this.previewSelection.cause = '';
+            this.previewSelection.detail = '';
+          }
+          if (changed === 'cause') {
+            this.previewSelection.detail = '';
+          }
+          this.filterPreviewOptions();
+        },
+
+        filterPreviewOptions() {
+          const selectors = this.buildSelectors();
+          const selectedType = this.previewSelection.type;
+          const selectedCategory = this.previewSelection.category;
+          const selectedCause = this.previewSelection.cause;
+          this.derived.stopSelectors.categories = selectors.categories.filter(item => !selectedType || item.type === selectedType);
+          this.derived.stopSelectors.causes = selectors.causes.filter(item => (!selectedType || item.type === selectedType) && (!selectedCategory || item.category === selectedCategory));
+          this.derived.stopSelectors.details = selectors.details.filter(item => (!selectedType || item.type === selectedType) && (!selectedCategory || item.category === selectedCategory) && (!selectedCause || item.cause === selectedCause));
+        },
+
+        validateTaxonomy(taxonomy) {
+          if (!taxonomy.types.length) return { ok: false, message: 'Au moins un type requis.' };
+          for (const type of taxonomy.types) {
+            if (!type.name?.trim()) return { ok: false, message: 'Nom de type manquant.' };
+            for (const category of type.categories) {
+              if (!category.name?.trim()) return { ok: false, message: 'Nom de catégorie manquant.' };
+              for (const cause of category.causes) {
+                if (!cause.name?.trim()) return { ok: false, message: 'Nom de cause manquant.' };
+                for (const detail of cause.details) {
+                  if (!detail.name?.trim()) return { ok: false, message: 'Nom de détail manquant.' };
+                  if (detail.defaultMinutes < 0) return { ok: false, message: 'Minutes par défaut invalides.' };
+                }
+              }
+            }
+          }
+          return { ok: true };
+        },
+
+        validateRules() {
+          for (const rule of this.rules.rules) {
+            if (!rule.when || (!rule.when.type && !rule.when.category && !rule.when.cause && !rule.when.detail)) {
+              return { ok: false, message: 'Chaque règle doit avoir une condition.' };
+            }
+            if (!rule.requires?.length) {
+              return { ok: false, message: 'Chaque règle doit définir des champs requis.' };
+            }
+            if (rule.defaultsJSON && !this.isValidJSON(rule.defaultsJSON)) {
+              return { ok: false, message: 'JSON invalide pour les valeurs par défaut.' };
+            }
+          }
+          return { ok: true };
+        },
+
+        normalizeIds(taxonomy) {
+          taxonomy.types = (taxonomy.types || []).map(type => ({
+            id: type.id || crypto.randomUUID(),
+            name: type.name,
+            categories: (type.categories || []).map(category => ({
+              id: category.id || crypto.randomUUID(),
+              name: category.name,
+              causes: (category.causes || []).map(cause => ({
+                id: cause.id || crypto.randomUUID(),
+                name: cause.name,
+                details: (cause.details || []).map(detail => ({
+                  id: detail.id || crypto.randomUUID(),
+                  name: detail.name,
+                  defaultMinutes: Number.isFinite(detail.defaultMinutes) ? detail.defaultMinutes : 0
+                }))
+              }))
+            }))
+          }));
+          return taxonomy;
+        },
+
+        ensureRuleDefaults(rules) {
+          const normalized = Array.isArray(rules.rules) ? rules.rules : Array.isArray(rules) ? rules : [];
+          return {
+            rules: normalized.map(rule => {
+              const normalizedRule = {
+                id: rule.id || crypto.randomUUID(),
+                when: Object.assign({}, rule.when || {}),
+                requires: Array.isArray(rule.requires) ? [...rule.requires] : [],
+                defaults: Object.assign({}, rule.defaults || {})
+              };
+              normalizedRule.defaultsJSON = JSON.stringify(normalizedRule.defaults, null, 2);
+              return normalizedRule;
+            })
+          };
+        },
+
+        ensureReferentials(referentials) {
+          const result = {};
+          REFERENTIALS_META.forEach(meta => {
+            const rows = Array.isArray(referentials?.[meta.id]) ? referentials[meta.id] : [];
+            result[meta.id] = rows.map(row => ({ id: row.id || row.code || crypto.randomUUID(), ...row }));
+          });
+          return result;
+        },
+
+        addRule() {
+          this.rules.rules.push({
+            id: crypto.randomUUID(),
+            when: {},
+            requires: [],
+            defaults: {},
+            defaultsJSON: '{}'
+          });
+          this.touchRules();
+        },
+
+        removeRule(index) {
+          this.rules.rules.splice(index, 1);
+          this.touchRules();
+        },
+
+        updateRuleDefaults(rule) {
+          if (this.isValidJSON(rule.defaultsJSON)) {
+            rule.defaults = JSON.parse(rule.defaultsJSON || '{}');
+            this.touchRules();
+          } else {
+            this.showToast('JSON invalide pour les valeurs par défaut.', 'error');
+          }
+        },
+
+        testRules() {
+          this.ruleTestResult = this.applyRules(this.ruleTestSelection);
+          this.showToast('Test exécuté.', 'success');
+        },
+
+        applyRules(selection) {
+          const required = new Set();
+          const defaults = {};
+          this.rules.rules.forEach(rule => {
+            if (this.matchesWhen(selection, rule.when)) {
+              (rule.requires || []).forEach(field => required.add(field));
+              Object.assign(defaults, rule.defaults || {});
+            }
+          });
+          return { required: Array.from(required), defaults };
+        },
+
+        matchesWhen(selection, when) {
+          if (!when) return false;
+          if (when.type && selection.type !== when.type) return false;
+          if (when.category && selection.category !== when.category) return false;
+          if (when.cause && selection.cause !== when.cause) return false;
+          if (when.detail && selection.detail !== when.detail) return false;
+          return true;
+        },
+
+        addReferentialRow(refId) {
+          const meta = REFERENTIALS_META.find(item => item.id === refId);
+          if (!meta) return;
+          const newRow = { id: crypto.randomUUID() };
+          meta.columns.forEach(col => { newRow[col.key] = ''; });
+          this.referentials[refId].push(newRow);
+          this.touchReferentials();
+        },
+
+        removeReferentialRow(refId, index) {
+          this.referentials[refId].splice(index, 1);
+          this.touchReferentials();
+        },
+
+        exportCSV(refId) {
+          const meta = REFERENTIALS_META.find(item => item.id === refId);
+          if (!meta) return;
+          const rows = this.referentials[refId] || [];
+          const separator = this.exportSettings.separator || ';';
+          const headers = meta.columns.map(col => col.key).join(separator);
+          const lines = rows.map(row => meta.columns.map(col => (row[col.key] ?? '')).join(separator));
+          const content = [headers, ...lines].join('\n');
+          const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `${this.exportSettings.filePrefix || 'PRODTRACK'}_${refId}.csv`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          this.showToast('CSV exporté.', 'success');
+        },
+
+        importCSV(event, refId) {
+          const file = event.target.files?.[0];
+          if (!file) return;
+          const meta = REFERENTIALS_META.find(item => item.id === refId);
+          if (!meta) return;
+          const reader = new FileReader();
+          reader.onload = () => {
+            try {
+              const text = reader.result;
+              const rows = text.split(/\r?\n/).filter(Boolean);
+              if (!rows.length) return;
+              const separator = this.exportSettings.separator || ';';
+              const headers = rows[0].split(separator).map(h => h.trim());
+              const data = rows.slice(1).map(line => {
+                const values = line.split(separator);
+                const row = { id: crypto.randomUUID() };
+                headers.forEach((header, index) => {
+                  row[header] = values[index] ?? '';
+                });
+                return row;
+              });
+              this.referentials[refId] = data;
+              this.touchReferentials();
+              this.showToast('CSV importé.', 'success');
+            } catch (error) {
+              console.error('Import CSV', error);
+              this.showToast('Erreur import CSV.', 'error');
+            }
+          };
+          reader.readAsText(file, 'utf-8');
+          event.target.value = '';
+        },
+
+        setDensity(value) {
+          this.displaySettings.density = value;
+          this.save();
+        },
+
+        applyTheme() {
+          document.documentElement.classList.toggle('dark', this.displaySettings.dark);
+          this.save();
+        },
+
+        applyGlass() {
+          this.save();
+        },
+
+        applyMotion() {
+          document.body.classList.toggle('reduce-motion', this.displaySettings.reduceMotion);
+          this.save();
+        },
+
+        touchReferentials() {
+          this.save();
+        },
+
+        touchRules() {
+          this.save();
+        },
+
+        touchExports() {
+          this.save();
+        },
+
+        touchSecurity() {
+          this.save();
+        },
+
+        updateExportColumns() {
+          this.exportSettings.columns = this.exportSettings.columnsText.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+          this.touchExports();
+        },
+
+        isValidJSON(value) {
+          try {
+            JSON.parse(value);
+            return true;
+          } catch (error) {
+            return false;
+          }
+        },
+
+        copyToClipboard(text) {
+          if (!navigator.clipboard) {
+            this.showToast('Clipboard non disponible.', 'warning');
+            return;
+          }
+          navigator.clipboard.writeText(text).then(() => {
+            this.showToast('Copié.', 'success');
+          }).catch(() => {
+            this.showToast('Impossible de copier.', 'error');
+          });
+        },
+
+        confirmReset() {
+          if (!confirm('Confirmer la réinitialisation complète ?')) return;
+          const current = JSON.stringify(this.buildPayload(), null, 2);
+          const defaults = JSON.stringify(DEFAULT_PARAMS, null, 2);
+          this.resetDiff = this.computeDiff(defaults, current);
+          if (confirm('Supprimer la configuration actuelle ?')) {
+            localStorage.removeItem(this.storeKey);
+            this.restoreDefaults();
+            this.showToast('Configuration réinitialisée.', 'success');
+          }
+        },
+
+        computeDiff(defaults, current) {
+          const diff = [];
+          const defaultObj = JSON.parse(defaults);
+          const currentObj = JSON.parse(current);
+          const compare = (prefix, a, b) => {
+            if (typeof a !== typeof b) {
+              diff.push(`${prefix}: modifié`);
+              return;
+            }
+            if (typeof a !== 'object' || a === null) {
+              if (a !== b) diff.push(`${prefix}: ${JSON.stringify(a)} -> ${JSON.stringify(b)}`);
+              return;
+            }
+            const keys = new Set([...Object.keys(a || {}), ...Object.keys(b || {})]);
+            keys.forEach(key => compare(`${prefix}.${key}`, a?.[key], b?.[key]));
+          };
+          compare('params', defaultObj, currentObj);
+          return diff.join('\n') || 'Aucune différence';
+        },
+
+        emitParamsChanged() {
+          window.dispatchEvent(new CustomEvent('prodtrack:params-changed', {
+            detail: {
+              stopSchema: this.buildStopSchemaFromTaxonomy(),
+              rules: this.rules.rules,
+              referentiels: this.referentials
+            }
+          }));
+        }
+      };
+    }
+  </script>
+</body>
+</html>
