@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="fr" x-data="appState()" x-init="init()">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ProdTrack - Pilotage Performance</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        [x-cloak] { display: none !important; }
+        .glass { background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); }
+        .dark .glass { background: rgba(0, 0, 0, 0.2); }
+    </style>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 transition-colors">
+    <!-- Navigation -->
+    <nav class="bg-white dark:bg-gray-800 shadow-lg">
+        <div class="max-w-7xl mx-auto px-4">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center space-x-8">
+                    <h1 class="text-xl font-bold">ProdTrack</h1>
+                    <div class="flex space-x-4">
+                        <button x-on:click="activeTab = 'saisie'" 
+                                :class="activeTab === 'saisie' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500'"
+                                class="px-3 py-2 font-medium">Saisie</button>
+                        <button x-on:click="activeTab = 'export'" 
+                                :class="activeTab === 'export' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500'"
+                                class="px-3 py-2 font-medium">Export</button>
+                        <button x-on:click="activeTab = 'equipes'" 
+                                :class="activeTab === 'equipes' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500'"
+                                class="px-3 py-2 font-medium">Équipes</button>
+                        <button x-on:click="activeTab = 'taxonomie'" 
+                                :class="activeTab === 'taxonomie' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500'"
+                                class="px-3 py-2 font-medium">Taxonomie</button>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <span class="text-sm" x-text="`Ligne: ${settings.lineName || 'Non définie'}`"></span>
+                    <button x-on:click="toggleTheme()" class="p-2 rounded-lg bg-gray-200 dark:bg-gray-700">
+                        <span x-text="theme === 'dark' ? '☀️' : '🌙'"></span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Contenu principal -->
+    <main class="max-w-7xl mx-auto py-6 px-4">
+        <!-- Onglet Saisie -->
+        <div x-show="activeTab === 'saisie'" x-cloak class="space-y-6">
+            <!-- En-tête de saisie -->
+            <div class="glass rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h2 class="text-2xl font-bold">Saisie Opérateur</h2>
+                        <p class="text-gray-600 dark:text-gray-400" x-text="`Heure: ${currentHour.hh} | Équipe: ${currentHour.team || 'Non assignée'}`"></p>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-3xl font-bold" x-text="currentTimer.display"></div>
+                        <div class="text-sm text-gray-500">Actualisation 1s</div>
+                    </div>
+                </div>
+
+                <!-- Sélection d'heure -->
+                <div class="mt-4 grid grid-cols-6 gap-2">
+                    <template x-for="h in heures" :key="h.hh">
+                        <button x-on:click="selectHour(h)"
+                                :class="currentHour.hh === h.hh ? 
+                                    'bg-blue-500 text-white' : 
+                                    'bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600'"
+                                class="p-2 rounded-lg text-sm font-medium transition-colors">
+                            <span x-text="h.hh"></span>
+                        </button>
+                    </template>
+                </div>
+            </div>
+
+            <!-- Formulaire de saisie -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- Production -->
+                <div class="glass rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+                    <h3 class="text-lg font-semibold mb-4">Production</h3>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium mb-2">Good (unités)</label>
+                            <input type="number" x-model="currentHour.good" 
+                                   class="w-full p-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium mb-2">Cible</label>
+                            <input type="number" x-model="currentHour.target" readonly
+                                   class="w-full p-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium mb-2">Commentaire</label>
+                            <textarea x-model="currentHour.comment" rows="3"
+                                      class="w-full p-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800"
+                                      placeholder="Observations..."></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Causes détaillées -->
+                <div class="glass rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+                    <h3 class="text-lg font-semibold mb-4">Causes des arrêts</h3>
+                    
+                    <!-- Sélection de cause -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+                        <select x-model="newCause.type" class="p-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800">
+                            <option value="">Type</option>
+                            <template x-for="type in taxonomie.types" :key="type">
+                                <option x-text="type" :value="type"></option>
+                            </template>
+                        </select>
+                        
+                        <select x-model="newCause.categorie" :disabled="!newCause.type"
+                                class="p-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800">
+                            <option value="">Catégorie</option>
+                            <template x-for="cat in getCategoriesForType(newCause.type)" :key="cat">
+                                <option x-text="cat" :value="cat"></option>
+                            </template>
+                        </select>
+                        
+                        <select x-model="newCause.sousCategorie" :disabled="!newCause.categorie"
+                                class="p-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800">
+                            <option value="">Sous-catégorie</option>
+                            <template x-for="sub in getSousCategories(newCause.type, newCause.categorie)" :key="sub">
+                                <option x-text="sub" :value="sub"></option>
+                            </template>
+                        </select>
+                    </div>
+
+                    <!-- Détails de la cause -->
+                    <div class="grid grid-cols-2 gap-3 mb-4">
+                        <div>
+                            <label class="block text-sm font-medium mb-1">Minutes</label>
+                            <input type="number" x-model="newCause.minutes" min="0"
+                                   class="w-full p-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium mb-1">Cause 5M</label>
+                            <select x-model="newCause.cause5m" class="w-full p-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800">
+                                <option value="">Sélectionner</option>
+                                <option value="Machine">Machine</option>
+                                <option value="Méthode">Méthode</option>
+                                <option value="Main d'œuvre">Main d'œuvre</option>
+                                <option value="Matière">Matière</option>
+                                <option value="Milieu">Milieu</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <button x-on:click="addCause()" 
+                            :disabled="!canAddCause"
+                            class="w-full bg-blue-500 text-white p-3 rounded-lg font-semibold disabled:opacity-50">
+                        + Ajouter la cause
+                    </button>
+
+                    <!-- Liste des causes -->
+                    <div class="mt-4 space-y-2 max-h-60 overflow-y-auto">
+                        <template x-for="(cause, index) in currentHour.causes" :key="cause.id">
+                            <div class="flex justify-between items-center p-3 bg-white dark:bg-gray-800 rounded-lg border">
+                                <div>
+                                    <div class="font-medium" x-text="`${cause.type} → ${cause.categorie} → ${cause.sousCategorie}`"></div>
+                                    <div class="text-sm text-gray-500" x-text="`${cause.minutes} min | 5M: ${cause.cause5m}`"></div>
+                                </div>
+                                <button x-on:click="removeCause(index)" class="text-red-500 hover:text-red-700">
+                                    ✕
+                                </button>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Validation -->
+            <div class="glass rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h3 class="text-lg font-semibold">Validation</h3>
+                        <p class="text-gray-600 dark:text-gray-400" x-text="validationMessage"></p>
+                    </div>
+                    <div class="space-x-3">
+                        <button x-on:click="saveHour()" 
+                                :class="isValid ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-400 cursor-not-allowed'"
+                                class="px-6 py-3 text-white rounded-lg font-semibold transition-colors">
+                            Valider l'heure
+                        </button>
+                        <button x-on:click="resetCurrentHour()" class="px-6 py-3 bg-gray-500 text-white rounded-lg font-semibold">
+                            Réinitialiser
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Onglet Export -->
+        <div x-show="activeTab === 'export'" x-cloak class="space-y-6">
+            <div class="glass rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+                <h2 class="text-2xl font-bold mb-6">Export des données</h2>
+                
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                    <button x-on:click="exportCSV()" class="p-4 bg-green-500 text-white rounded-lg font-semibold hover:bg-green-600 transition-colors">
+                        📊 Export CSV
+                    </button>
+                    <button x-on:click="exportJSON()" class="p-4 bg-blue-500 text-white rounded-lg font-semibold hover:bg-blue-600 transition-colors">
+                        📁 Export JSON
+                    </button>
+                    <button x-on:click="exportPDF()" class="p-4 bg-red-500 text-white rounded-lg font-semibold hover:bg-red-600 transition-colors">
+                        📄 Export PDF
+                    </button>
+                </div>
+
+                <!-- Aperçu des données -->
+                <div class="border border-gray-200 dark:border-gray-700 rounded-lg">
+                    <div class="p-4 border-b border-gray-200 dark:border-gray-700">
+                        <h3 class="font-semibold">Aperçu des données exportables</h3>
+                    </div>
+                    <div class="p-4 max-h-96 overflow-y-auto">
+                        <template x-for="hour in heuresFiltrees" :key="hour.hh">
+                            <div class="border-b border-gray-100 dark:border-gray-800 py-3">
+                                <div class="font-medium" x-text="`${hour.hh} - ${hour.team} | Good: ${hour.good} | Cible: ${hour.target}`"></div>
+                                <template x-for="cause in hour.causes" :key="cause.id">
+                                    <div class="text-sm text-gray-600 dark:text-gray-400 ml-4" 
+                                         x-text="`• ${cause.type} > ${cause.categorie} > ${cause.sousCategorie} (${cause.minutes}min)`"></div>
+                                </template>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Onglet Équipes -->
+        <div x-show="activeTab === 'equipes'" x-cloak class="space-y-6">
+            <div class="glass rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-2xl font-bold">Gestion des Équipes</h2>
+                    <button x-on:click="addEquipe()" class="bg-blue-500 text-white px-4 py-2 rounded-lg font-semibold">
+                        + Nouvelle équipe
+                    </button>
+                </div>
+
+                <div class="space-y-4">
+                    <template x-for="(equipe, index) in settings.equipes" :key="equipe.id">
+                        <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+                            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                <div>
+                                    <label class="block text-sm font-medium mb-1">Nom</label>
+                                    <input type="text" x-model="equipe.nom"
+                                           class="w-full p-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium mb-1">Code</label>
+                                    <input type="text" x-model="equipe.code" maxlength="2"
+                                           class="w-full p-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium mb-1">Début</label>
+                                    <input type="time" x-model="equipe.debut"
+                                           class="w-full p-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium mb-1">Fin</label>
+                                    <input type="time" x-model="equipe.fin"
+                                           class="w-full p-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800">
+                                </div>
+                            </div>
+                            <div class="mt-3 flex justify-end space-x-2">
+                                <button x-on:click="moveEquipe(index, -1)" 
+                                        :disabled="index === 0"
+                                        class="px-3 py-1 bg-gray-500 text-white rounded disabled:opacity-50">
+                                    ↑
+                                </button>
+                                <button x-on:click="moveEquipe(index, 1)" 
+                                        :disabled="index === settings.equipes.length - 1"
+                                        class="px-3 py-1 bg-gray-500 text-white rounded disabled:opacity-50">
+                                    ↓
+                                </button>
+                                <button x-on:click="removeEquipe(index)" 
+                                        class="px-3 py-1 bg-red-500 text-white rounded">
+                                    Supprimer
+                                </button>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+
+        <!-- Onglet Taxonomie -->
+        <div x-show="activeTab === 'taxonomie'" x-cloak class="space-y-6">
+            <div class="glass rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-2xl font-bold">Configuration Taxonomie</h2>
+                    <div class="space-x-2">
+                        <button x-on:click="addType()" class="bg-blue-500 text-white px-4 py-2 rounded-lg font-semibold">
+                            + Type
+                        </button>
+                        <button x-on:click="exportTaxonomie()" class="bg-green-500 text-white px-4 py-2 rounded-lg font-semibold">
+                            Export CSV
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Types -->
+                <div class="mb-6">
+                    <h3 class="text-lg font-semibold mb-3">Types d'arrêt</h3>
+                    <div class="space-y-2">
+                        <template x-for="(type, index) in taxonomie.types" :key="type">
+                            <div class="flex items-center space-x-3 p-3 bg-white dark:bg-gray-800 rounded-lg border">
+                                <input type="text" x-model="taxonomie.types[index]"
+                                       class="flex-1 p-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800">
+                                <button x-on:click="removeType(index)"
+                                        class="text-red-500 hover:text-red-700">
+                                    ✕
+                                </button>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- Catégories et sous-catégories -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div>
+                        <h3 class="text-lg font-semibold mb-3">Catégories par type</h3>
+                        <template x-for="type in taxonomie.types" :key="type">
+                            <div class="mb-4 p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
+                                <h4 class="font-semibold mb-2" x-text="type"></h4>
+                                <div class="space-y-2">
+                                    <template x-for="(categorie, catIndex) in taxonomie.categories[type] || []" :key="categorie">
+                                        <div class="flex items-center space-x-2">
+                                            <input type="text" x-model="taxonomie.categories[type][catIndex]"
+                                                   class="flex-1 p-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800">
+                                            <button x-on:click="removeCategorie(type, catIndex)"
+                                                    class="text-red-500 hover:text-red-700">
+                                                ✕
+                                            </button>
+                                        </div>
+                                    </template>
+                                    <button x-on:click="addCategorie(type)" 
+                                            class="w-full text-center py-2 border border-dashed border-gray-300 dark:border-gray-600 rounded text-gray-500 hover:text-gray-700">
+                                        + Ajouter catégorie
+                                    </button>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+
+                    <div>
+                        <h3 class="text-lg font-semibold mb-3">Sous-catégories</h3>
+                        <template x-for="type in taxonomie.types" :key="type">
+                            <div class="mb-4">
+                                <h4 class="font-semibold mb-2" x-text="type"></h4>
+                                <template x-for="categorie in taxonomie.categories[type] || []" :key="categorie">
+                                    <div class="mb-3 p-3 border border-gray-200 dark:border-gray-700 rounded-lg">
+                                        <h5 class="font-medium mb-2" x-text="categorie"></h5>
+                                        <div class="space-y-2">
+                                            <template x-for="(sub, subIndex) in taxonomie.sousCategories[type]?.[categorie] || []" :key="sub">
+                                                <div class="flex items-center space-x-2">
+                                                    <input type="text" x-model="taxonomie.sousCategories[type][categorie][subIndex]"
+                                                           class="flex-1 p-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800">
+                                                    <button x-on:click="removeSousCategorie(type, categorie, subIndex)"
+                                                            class="text-red-500 hover:text-red-700">
+                                                        ✕
+                                                    </button>
+                                                </div>
+                                            </template>
+                                            <button x-on:click="addSousCategorie(type, categorie)" 
+                                                    class="w-full text-center py-2 border border-dashed border-gray-300 dark:border-gray-600 rounded text-gray-500 hover:text-gray-700">
+                                                + Sous-catégorie
+                                            </button>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        function appState() {
+            return {
+                // État général
+                theme: localStorage.getItem('theme') || 'light',
+                activeTab: 'saisie',
+                
+                // Données de base
+                settings: JSON.parse(localStorage.getItem('settings')) || {
+                    lineName: 'L16',
+                    equipes: [
+                        { id: '1', nom: 'Équipe A', code: 'A', debut: '06:00', fin: '14:00' },
+                        { id: '2', nom: 'Équipe B', code: 'B', debut: '14:00', fin: '22:00' }
+                    ]
+                },
+                
+                // Taxonomie Lean
+                taxonomie: JSON.parse(localStorage.getItem('taxonomie')) || {
+                    types: ['Technique', 'Organisation', 'Qualité', 'Autres'],
+                    categories: {
+                        'Technique': ['Panne', 'Réglage', 'Maintenance'],
+                        'Organisation': ['Attente', 'Réunion', 'Formation'],
+                        'Qualité': ['Contrôle', 'Non-conformité', 'Audit'],
+                        'Autres': ['Divers']
+                    },
+                    sousCategories: {
+                        'Technique': {
+                            'Panne': ['Mécanique', 'Électrique', 'Automatisme'],
+                            'Réglage': ['Micro-réglage', 'Changement format'],
+                            'Maintenance': ['Préventive', 'Curative']
+                        },
+                        'Organisation': {
+                            'Attente': ['Manque matière', 'Absence opérateur'],
+                            'Réunion': ['Quotidienne', 'Point qualité'],
+                            'Formation': ['Sécurité', 'Nouvelle procédure']
+                        },
+                        'Qualité': {
+                            'Contrôle': ['Rebut', 'Retouche', 'Contrôle renforcé'],
+                            'Non-conformité': ['Dimension', 'Aspect'],
+                            'Audit': ['Interne', 'Client']
+                        },
+                        'Autres': {
+                            'Divers': ['Autre cause']
+                        }
+                    }
+                },
+                
+                // Données heures
+                heures: JSON.parse(localStorage.getItem('heures')) || Array.from({length: 24}, (_, i) => ({
+                    hh: `${String(i).padStart(2, '0')}:00`,
+                    good: 0,
+                    target: 1500,
+                    team: '',
+                    causes: [],
+                    comment: '',
+                    validated: false
+                })),
+                
+                // Heure courante
+                currentHour: {},
+                currentTimer: { display: '00:00' },
+                
+                // Nouvelle cause
+                newCause: {
+                    type: '',
+                    categorie: '',
+                    sousCategorie: '',
+                    minutes: 5,
+                    cause5m: ''
+                },
+
+                init() {
+                    // Appliquer le thème
+                    this.applyTheme();
+                    
+                    // Charger les données sauvegardées
+                    this.loadData();
+                    
+                    // Sélectionner la première heure par défaut
+                    if (this.heures.length > 0) {
+                        this.currentHour = { ...this.heures[0] };
+                    }
+                    
+                    // Démarrer le timer
+                    this.startTimer();
+                },
+
+                // Gestion du thème
+                toggleTheme() {
+                    this.theme = this.theme === 'light' ? 'dark' : 'light';
+                    this.applyTheme();
+                    localStorage.setItem('theme', this.theme);
+                },
+                
+                applyTheme() {
+                    if (this.theme === 'dark') {
+                        document.documentElement.classList.add('dark');
+                    } else {
+                        document.documentElement.classList.remove('dark');
+                    }
+                },
+
+                // Chargement des données
+                loadData() {
+                    const saved = localStorage.getItem('settings');
+                    if (saved) this.settings = JSON.parse(saved);
+                    
+                    const savedTaxonomie = localStorage.getItem('taxonomie');
+                    if (savedTaxonomie) this.taxonomie = JSON.parse(savedTaxonomie);
+                    
+                    const savedHeures = localStorage.getItem('heures');
+                    if (savedHeures) this.heures = JSON.parse(savedHeures);
+                },
+
+                // Sauvegarde
+                saveData() {
+                    localStorage.setItem('settings', JSON.stringify(this.settings));
+                    localStorage.setItem('taxonomie', JSON.stringify(this.taxonomie));
+                    localStorage.setItem('heures', JSON.stringify(this.heures));
+                },
+
+                // Timer
+                startTimer() {
+                    setInterval(() => {
+                        const now = new Date();
+                        this.currentTimer.display = 
+                            `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+                    }, 1000);
+                },
+
+                // Gestion des heures
+                selectHour(hour) {
+                    this.currentHour = { ...hour };
+                },
+
+                // Gestion des causes
+                getCategoriesForType(type) {
+                    return this.taxonomie.categories[type] || [];
+                },
+
+                getSousCategories(type, categorie) {
+                    return this.taxonomie.sousCategories[type]?.[categorie] || [];
+                },
+
+                get canAddCause() {
+                    return this.newCause.type && this.newCause.categorie && 
+                           this.newCause.sousCategorie && this.newCause.minutes > 0;
+                },
+
+                addCause() {
+                    if (!this.canAddCause) return;
+                    
+                    const cause = {
+                        id: Date.now().toString(),
+                        ...this.newCause
+                    };
+                    
+                    this.currentHour.causes.push(cause);
+                    
+                    // Réinitialiser le formulaire
+                    this.newCause = {
+                        type: '',
+                        categorie: '',
+                        sousCategorie: '',
+                        minutes: 5,
+                        cause5m: ''
+                    };
+                },
+
+                removeCause(index) {
+                    this.currentHour.causes.splice(index, 1);
+                },
+
+                // Validation
+                get isValid() {
+                    return this.currentHour.good >= 0 && this.currentHour.target > 0;
+                },
+
+                get validationMessage() {
+                    if (!this.isValid) return 'Données incomplètes';
+                    const totalMinutes = this.currentHour.causes.reduce((sum, cause) => sum + cause.minutes, 0);
+                    return `Total causes: ${totalMinutes} minutes | ${this.currentHour.causes.length} cause(s)`;
+                },
+
+                saveHour() {
+                    if (!this.isValid) return;
+                    
+                    // Mettre à jour l'heure dans le tableau
+                    const index = this.heures.findIndex(h => h.hh === this.currentHour.hh);
+                    if (index !== -1) {
+                        this.heures[index] = { ...this.currentHour, validated: true };
+                    }
+                    
+                    this.saveData();
+                    alert('Heure validée et sauvegardée !');
+                },
+
+                resetCurrentHour() {
+                    this.currentHour.causes = [];
+                    this.currentHour.good = 0;
+                    this.currentHour.comment = '';
+                },
+
+                // Gestion des équipes
+                addEquipe() {
+                    this.settings.equipes.push({
+                        id: Date.now().toString(),
+                        nom: 'Nouvelle équipe',
+                        code: String.fromCharCode(65 + this.settings.equipes.length),
+                        debut: '06:00',
+                        fin: '14:00'
+                    });
+                    this.saveData();
+                },
+
+                removeEquipe(index) {
+                    if (confirm('Supprimer cette équipe ?')) {
+                        this.settings.equipes.splice(index, 1);
+                        this.saveData();
+                    }
+                },
+
+                moveEquipe(index, direction) {
+                    if ((index === 0 && direction === -1) || 
+                        (index === this.settings.equipes.length - 1 && direction === 1)) {
+                        return;
+                    }
+                    
+                    const targetIndex = index + direction;
+                    [this.settings.equipes[index], this.settings.equipes[targetIndex]] = 
+                    [this.settings.equipes[targetIndex], this.settings.equipes[index]];
+                    this.saveData();
+                },
+
+                // Gestion de la taxonomie
+                addType() {
+                    const nouveauType = prompt('Nom du nouveau type:');
+                    if (nouveauType && !this.taxonomie.types.includes(nouveauType)) {
+                        this.taxonomie.types.push(nouveauType);
+                        this.taxonomie.categories[nouveauType] = [];
+                        this.taxonomie.sousCategories[nouveauType] = {};
+                        this.saveData();
+                    }
+                },
+
+                removeType(index) {
+                    const type = this.taxonomie.types[index];
+                    if (confirm(`Supprimer le type "${type}" et toutes ses catégories ?`)) {
+                        this.taxonomie.types.splice(index, 1);
+                        delete this.taxonomie.categories[type];
+                        delete this.taxonomie.sousCategories[type];
+                        this.saveData();
+                    }
+                },
+
+                addCategorie(type) {
+                    const nouvelleCategorie = prompt('Nom de la nouvelle catégorie:');
+                    if (nouvelleCategorie && !this.taxonomie.categories[type].includes(nouvelleCategorie)) {
+                        this.taxonomie.categories[type].push(nouvelleCategorie);
+                        if (!this.taxonomie.sousCategories[type]) {
+                            this.taxonomie.sousCategories[type] = {};
+                        }
+                        this.taxonomie.sousCategories[type][nouvelleCategorie] = [];
+                        this.saveData();
+                    }
+                },
+
+                removeCategorie(type, index) {
+                    const categorie = this.taxonomie.categories[type][index];
+                    if (confirm(`Supprimer la catégorie "${categorie}" ?`)) {
+                        this.taxonomie.categories[type].splice(index, 1);
+                        delete this.taxonomie.sousCategories[type][categorie];
+                        this.saveData();
+                    }
+                },
+
+                addSousCategorie(type, categorie) {
+                    const nouvelleSousCategorie = prompt('Nom de la nouvelle sous-catégorie:');
+                    if (nouvelleSousCategorie) {
+                        if (!this.taxonomie.sousCategories[type][categorie].includes(nouvelleSousCategorie)) {
+                            this.taxonomie.sousCategories[type][categorie].push(nouvelleSousCategorie);
+                            this.saveData();
+                        }
+                    }
+                },
+
+                removeSousCategorie(type, categorie, index) {
+                    this.taxonomie.sousCategories[type][categorie].splice(index, 1);
+                    this.saveData();
+                },
+
+                // Export
+                get heuresFiltrees() {
+                    return this.heures.filter(h => h.validated || h.causes.length > 0 || h.good > 0);
+                },
+
+                exportCSV() {
+                    const lignes = ['Date;Heure;Équipe;Good;Target;Type;Categorie;SousCategorie;Minutes;Cause5M;Commentaire'];
+                    
+                    const date = new Date().toISOString().split('T')[0];
+                    
+                    this.heuresFiltrees.forEach(heure => {
+                        if (heure.causes.length === 0) {
+                            lignes.push(`${date};${heure.hh};${heure.team};${heure.good};${heure.target};;;;;;"${heure.comment}"`);
+                        } else {
+                            heure.causes.forEach(cause => {
+                                lignes.push(`${date};${heure.hh};${heure.team};${heure.good};${heure.target};${cause.type};${cause.categorie};${cause.sousCategorie};${cause.minutes};${cause.cause5m};"${heure.comment}"`);
+                            });
+                        }
+                    });
+                    
+                    this.downloadFile('prodtrack_export.csv', lignes.join('\n'), 'text/csv');
+                },
+
+                exportJSON() {
+                    const data = {
+                        meta: {
+                            exportDate: new Date().toISOString(),
+                            ligne: this.settings.lineName,
+                            version: '1.0'
+                        },
+                        heures: this.heuresFiltrees
+                    };
+                    
+                    this.downloadFile('prodtrack_export.json', JSON.stringify(data, null, 2), 'application/json');
+                },
+
+                exportPDF() {
+                    alert('Export PDF - Fonctionnalité à implémenter');
+                    // Implémentation basique du PDF à ajouter
+                },
+
+                exportTaxonomie() {
+                    const lignes = ['Type;Categorie;SousCategorie'];
+                    
+                    this.taxonomie.types.forEach(type => {
+                        this.taxonomie.categories[type]?.forEach(categorie => {
+                            this.taxonomie.sousCategories[type]?.[categorie]?.forEach(sousCategorie => {
+                                lignes.push(`${type};${categorie};${sousCategorie}`);
+                            });
+                        });
+                    });
+                    
+                    this.downloadFile('taxonomie_export.csv', lignes.join('\n'), 'text/csv');
+                },
+
+                downloadFile(filename, content, mimeType) {
+                    const blob = new Blob([content], { type: mimeType });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                }
+            };
+        }
+    </script>
+</body>
+</html>
