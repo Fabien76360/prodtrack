@@ -878,6 +878,9 @@ Puis ouvrir http://localhost:8000/
         </div>
         <!-- REMOVED: categories & sous-categories manager -->
         <!-- REMOVED: events v1 configuration editor -->
+        <div class="mt-6 flex justify-end">
+          <button type="button" class="px-4 py-2 rounded-2xl bg-primary text-white font-semibold" @click="publishSettings()">Publier</button>
+        </div>
       </div>
     </section>
   </main>
@@ -1255,6 +1258,9 @@ Puis ouvrir http://localhost:8000/
     const KEY_CATS='pp_categories';
     const KEY_SUBPOOL='pp_subpool';
     const KEY_STOP_TYPES='pp_stop_types';
+    const SETTINGS_MASTER_KEY='pilotage-v3-settings';
+    const SETTINGS_RULES_KEY='pp:params:rules';
+    const SETTINGS_REFS_KEY='pp:params:refs';
     // PATCH storage: nouvelles clés persistées
     const KEY_SHIFTS='pp:shifts';
     const KEY_BRAND='pp:brand';
@@ -1286,6 +1292,383 @@ Puis ouvrir http://localhost:8000/
         "Divers":["Autre cause"]
       }
     };
+    const SETTINGS_DEFAULT={
+      lineName:'',
+      saveTarget:'local',
+      savePath:'',
+      filePattern:'{LIGNE}_{DATE}',
+      oeeProfiles:[],
+      shifts:[],
+      stopTypes:[],
+      categories:[],
+      pool:[],
+      rules:{rules:[]},
+      brand:{name:'ProdTrack',logoDataUrl:null},
+      autosave:false,
+      autoReset:false,
+      resetConfirm:true
+    };
+
+    function deepClone(value){
+      try{return JSON.parse(JSON.stringify(value));}catch{return value;}
+    }
+
+    function normalizeStopTypesList(list){
+      const seen=new Set();
+      const result=[];
+      (Array.isArray(list)?list:[]).forEach(raw=>{
+        const label=typeof raw==='string'?raw:String(raw||'');
+        const trimmed=label.trim();
+        if(!trimmed){return;}
+        const key=trimmed.toLowerCase();
+        if(seen.has(key)) return;
+        seen.add(key);
+        result.push(trimmed);
+      });
+      if(!result.length){
+        Object.keys(DEFAULT_STOP_SCHEMA||{}).forEach(type=>{
+          const trimmed=String(type||'').trim();
+          if(trimmed){
+            const key=trimmed.toLowerCase();
+            if(!seen.has(key)){seen.add(key);result.push(trimmed);} }
+        });
+      }
+      if(!result.length){result.push('Autres');}
+      return result;
+    }
+
+    function normalizeSubList(list){
+      const output=[];
+      (Array.isArray(list)?list:[]).forEach((entry)=>{
+        const label=typeof entry==='string'?entry:String(entry?.label||entry?.name||'');
+        const trimmed=label.trim();
+        if(!trimmed) return;
+        const minutesRaw=entry?.defaultMinutes ?? entry?.defaultMin ?? 0;
+        const defaultMinutes=Math.max(0,Math.round(Number(minutesRaw)||0));
+        output.push({
+          id:entry?.id||crypto.randomUUID(),
+          label:trimmed,
+          defaultMinutes
+        });
+      });
+      return output;
+    }
+
+    function normalizeCategoryList(list){
+      const result=[];
+      (Array.isArray(list)?list:[]).forEach((entry,index)=>{
+        const label=typeof entry==='string'?entry:String(entry?.label||entry?.name||'');
+        const trimmed=label.trim();
+        if(!trimmed) return;
+        const typeRaw=String(entry?.type||entry?.stopType||'').trim();
+        const sub=normalizeSubList(entry?.sub||entry?.subs||[]);
+        result.push({
+          id:entry?.id||crypto.randomUUID(),
+          label:trimmed,
+          type:typeRaw||'Autres',
+          order:Number.isFinite(Number(entry?.order))?Number(entry.order):index,
+          sub
+        });
+      });
+      return result.sort((a,b)=>Number(a.order||0)-Number(b.order||0));
+    }
+
+    function normalizePool(list){
+      const result=[];
+      (Array.isArray(list)?list:[]).forEach(entry=>{
+        const label=typeof entry==='string'?entry:String(entry?.label||entry?.name||'');
+        const trimmed=label.trim();
+        if(!trimmed) return;
+        const minutesRaw=entry?.defaultMinutes ?? entry?.defaultMin ?? 0;
+        result.push({
+          id:entry?.id||crypto.randomUUID(),
+          label:trimmed,
+          defaultMinutes=Math.max(0,Math.round(Number(minutesRaw)||0))
+        });
+      });
+      return result;
+    }
+
+    function normalizeOeeProfiles(list){
+      const result=[];
+      (Array.isArray(list)?list:[]).forEach((entry,index)=>{
+        if(!entry||typeof entry!=='object') return;
+        const name=String(entry.name||'').trim();
+        if(!name) return;
+        result.push({
+          id:entry.id||crypto.randomUUID(),
+          name,
+          targetRate:Number(entry.targetRate||0),
+          qualityTarget:Number(entry.qualityTarget||0),
+          availabilityTarget:Number(entry.availabilityTarget||0),
+          oeeTarget:Number(entry.oeeTarget||0),
+          order:Number.isFinite(Number(entry.order))?Number(entry.order):index
+        });
+      });
+      return result.sort((a,b)=>Number(a.order||0)-Number(b.order||0));
+    }
+
+    function normalizeShifts(list){
+      const result=[];
+      (Array.isArray(list)?list:[]).forEach((entry,index)=>{
+        if(!entry||typeof entry!=='object') return;
+        const label=String(entry.label||entry.name||entry.id||'').trim();
+        if(!label) return;
+        result.push({
+          id:entry.id||crypto.randomUUID(),
+          label,
+          order:Number.isFinite(Number(entry.order))?Number(entry.order):index
+        });
+      });
+      return result.sort((a,b)=>Number(a.order||0)-Number(b.order||0));
+    }
+
+    function normalizeRulesBag(bag){
+      const base={rules:[]};
+      if(!bag||typeof bag!=='object') return base;
+      const items=Array.isArray(bag.rules)?bag.rules:[];
+      base.rules=items.map(entry=>{
+        const when=entry?.when && typeof entry.when==='object'?entry.when:{};
+        const requires=Array.isArray(entry?.requires)?entry.requires.map(v=>String(v||'').trim()).filter(Boolean):[];
+        const defaults=entry?.defaults && typeof entry.defaults==='object'?entry.defaults:{};
+        return {when,requires,defaults};
+      });
+      return base;
+    }
+
+    function normalizeBrand(payload){
+      if(!payload||typeof payload!=='object'){
+        return deepClone(SETTINGS_DEFAULT.brand);
+      }
+      return {
+        name:String(payload.name||'').trim()||'ProdTrack',
+        logoDataUrl:payload.logoDataUrl||null
+      };
+    }
+
+    function normalizeSettings(payload){
+      const source=payload&&typeof payload==='object'?payload:{};
+      const base=deepClone(SETTINGS_DEFAULT);
+      base.lineName=String(source.lineName||'').trim();
+      base.saveTarget=String(source.saveTarget||'local').trim()||'local';
+      base.savePath=String(source.savePath||'').trim();
+      base.filePattern=String(source.filePattern||'{LIGNE}_{DATE}').trim()||'{LIGNE}_{DATE}';
+      base.oeeProfiles=normalizeOeeProfiles(source.oeeProfiles);
+      base.shifts=normalizeShifts(source.shifts);
+      base.stopTypes=normalizeStopTypesList(source.stopTypes);
+      base.categories=normalizeCategoryList(source.categories);
+      base.pool=normalizePool(source.pool);
+      base.rules=normalizeRulesBag(source.rules);
+      base.brand=normalizeBrand(source.brand);
+      base.autosave=Boolean(source.autosave);
+      base.autoReset=Boolean(source.autoReset);
+      base.resetConfirm=source.resetConfirm!==false;
+      return base;
+    }
+
+    function readStoredSettings(){
+      try{
+        const raw=localStorage.getItem(SETTINGS_MASTER_KEY);
+        if(!raw) return null;
+        const parsed=JSON.parse(raw);
+        return normalizeSettings(parsed);
+      }catch(err){
+        console.warn('settingsStore read error',err);
+        return null;
+      }
+    }
+
+    function migrateLegacySettings(){
+      const legacyState=safeGet(STORAGE_KEY,demoState)||{};
+      const legacySettings=legacyState.settings||{};
+      const storageSettings=legacyState.storage||{};
+      const payload={
+        lineName:legacySettings.lineName||'',
+        saveTarget:legacySettings.saveTarget||'local',
+        savePath:legacySettings.savePath||'',
+        filePattern:storageSettings.filePattern||legacySettings.filePattern||'{LIGNE}_{DATE}',
+        oeeProfiles:Array.isArray(legacySettings.oeeProfiles)?legacySettings.oeeProfiles:[],
+        shifts:safeGet(KEY_SHIFTS,legacySettings.shifts||[]),
+        stopTypes:safeGet(KEY_STOP_TYPES,legacySettings.stopTypes||[]),
+        categories:safeGet(KEY_CATS,legacySettings.categories||[]),
+        pool:safeGet(KEY_SUBPOOL,legacySettings.pool||[]),
+        brand:safeGet(KEY_BRAND,legacySettings.brand||null),
+        autosave:storageSettings.autosave||false,
+        autoReset:storageSettings.autoReset||false,
+        resetConfirm:storageSettings.resetConfirm!==false
+      };
+      let rulesSnapshot={rules:[]};
+      try{
+        rulesSnapshot=JSON.parse(localStorage.getItem(SETTINGS_RULES_KEY)||'{"rules":[]}');
+      }catch{rulesSnapshot={rules:[]};}
+      payload.rules=rulesSnapshot;
+      const normalized=normalizeSettings(payload);
+      try{localStorage.setItem(SETTINGS_MASTER_KEY,JSON.stringify(normalized));}catch(err){console.warn('settingsStore migrate persist',err);}
+      return normalized;
+    }
+
+    const settingsStore=(()=>{
+      let current=readStoredSettings();
+      if(!current){
+        current=migrateLegacySettings();
+      }
+      if(!current){
+        current=normalizeSettings({});
+        try{localStorage.setItem(SETTINGS_MASTER_KEY,JSON.stringify(current));}catch(err){console.warn('settingsStore init persist',err);}
+      }
+      const listeners=new Set();
+
+      function snapshot(){
+        return deepClone(current);
+      }
+
+      function notify(reason){
+        const snap=snapshot();
+        listeners.forEach(cb=>{try{cb(snap,reason);}catch(err){console.warn('settingsStore listener',err);}});
+        window.__stopSchema=buildStopSchema();
+        window.dispatchEvent(new CustomEvent('settings:updated',{detail:{settings:snap,reason}}));
+      }
+
+      function applyPatch(patch){
+        if(!patch||typeof patch!=='object') return;
+        const merged={...current,...deepClone(patch)};
+        current=normalizeSettings(merged);
+      }
+
+      return {
+        get(){
+          return snapshot();
+        },
+        set(patch){
+          applyPatch(patch);
+          notify('set');
+        },
+        replace(payload){
+          current=normalizeSettings(payload);
+          notify('replace');
+        },
+        persist(){
+          try{
+            localStorage.setItem(SETTINGS_MASTER_KEY,JSON.stringify(current));
+            safeSet(KEY_CATS,current.categories);
+            safeSet(KEY_SUBPOOL,current.pool);
+            safeSet(KEY_STOP_TYPES,current.stopTypes);
+            safeSet(KEY_SHIFTS,current.shifts);
+            safeSet(KEY_BRAND,current.brand);
+            localStorage.setItem(SETTINGS_RULES_KEY,JSON.stringify(current.rules||{rules:[]}));
+          }catch(err){
+            console.warn('settingsStore persist error',err);
+          }
+          notify('persist');
+        },
+        onUpdate(cb){
+          if(typeof cb!=='function') return () => {};
+          listeners.add(cb);
+          return ()=>listeners.delete(cb);
+        }
+      };
+    })();
+
+    window.settingsStore=settingsStore;
+
+    function buildStopSchema(){
+      const snapshot=settingsStore.get();
+      const schema={};
+      (snapshot.stopTypes||[]).forEach(type=>{
+        const label=String(type||'').trim();
+        if(!label) return;
+        if(!schema[label]) schema[label]={};
+      });
+      (snapshot.categories||[]).forEach(cat=>{
+        const typeLabel=String(cat?.type||'Autres').trim()||'Autres';
+        const catLabel=String(cat?.label||'').trim();
+        if(!catLabel) return;
+        if(!schema[typeLabel]) schema[typeLabel]={};
+        schema[typeLabel][catLabel]=(cat?.sub||[]).map(sub=>String(sub?.label||'').trim()).filter(Boolean);
+      });
+      return schema;
+    }
+
+    function applyRules(sel){
+      const payload=sel&&typeof sel==='object'?sel:{};
+      const rules=(settingsStore.get().rules?.rules)||[];
+      const hit=rules.find(rule=>{
+        const when=rule?.when||{};
+        if(when.type && when.type!==payload.type) return false;
+        if(when.category && when.category!==payload.category) return false;
+        if(when.cause && when.cause!==payload.cause) return false;
+        if(Array.isArray(when.categorie_in) && when.categorie_in.length){
+          if(!when.categorie_in.includes(payload.category)) return false;
+        }
+        if(when.categorie && when.categorie!==payload.category) return false;
+        if(when.cause_5m && when.cause_5m!==payload.cause_5m) return false;
+        if(when.detail_code && when.detail_code!==payload.detail_code) return false;
+        return true;
+      });
+      if(!hit){
+        return {requires:[],defaults:{}};
+      }
+      const requires=Array.isArray(hit.requires)?hit.requires.slice().filter(Boolean):[];
+      const defaults=hit.defaults&&typeof hit.defaults==='object'?hit.defaults:{};
+      return {requires,defaults};
+    }
+
+    window.__stopSchema=buildStopSchema();
+
+    function syncAppFromSettings(snapshot){
+      const appHost=document.querySelector('[x-data="appState"]');
+      const app=appHost&&appHost.__x?appHost.__x.$data:null;
+      if(!app) return;
+      const data=snapshot||settingsStore.get();
+      if(app.settings){
+        app.settings.lineName=data.lineName;
+        app.settings.saveTarget=data.saveTarget;
+        app.settings.savePath=data.savePath;
+        app.settings.stopTypes=Array.isArray(data.stopTypes)?data.stopTypes.slice():[];
+        app.settings.categories=deepClone(data.categories);
+        app.settings.oeeProfiles=deepClone(data.oeeProfiles);
+        app.settings.shifts=deepClone(data.shifts);
+        app.settings.stopSchema=buildStopSchema();
+      }
+      if(app.state && app.state.settings){
+        app.state.settings.lineName=data.lineName;
+        app.state.settings.saveTarget=data.saveTarget;
+        app.state.settings.savePath=data.savePath;
+        app.state.settings.stopTypes=Array.isArray(data.stopTypes)?data.stopTypes.slice():[];
+        app.state.settings.categories=deepClone(data.categories);
+        app.state.settings.oeeProfiles=deepClone(data.oeeProfiles);
+        app.state.settings.shifts=deepClone(data.shifts);
+        app.state.settings.stopSchema=buildStopSchema();
+      }
+      if(app.storage){
+        app.storage.autosave=Boolean(data.autosave);
+        app.storage.autoReset=Boolean(data.autoReset);
+        app.storage.resetConfirm=data.resetConfirm!==false;
+        if(typeof data.filePattern==='string'&&data.filePattern){
+          app.storage.filePattern=data.filePattern;
+        }
+      }
+      app.stopTypes=Array.isArray(data.stopTypes)?data.stopTypes.slice():[];
+      window.dispatchEvent(new CustomEvent('cats:updated',{detail:{categories:data.categories,pool:data.pool,types:data.stopTypes}}));
+    }
+
+    syncAppFromSettings(settingsStore.get());
+
+    window.addEventListener('settings:updated',event=>{
+      const snapshot=event?.detail?.settings || settingsStore.get();
+      window.__stopSchema=buildStopSchema();
+      syncAppFromSettings(snapshot);
+      settingsStoreWriteForm(settingsStoreSnapshotToForm(snapshot));
+    });
+
+    window.addEventListener('prodtrack:params-changed',event=>{
+      if(event?.detail?.stopSchema){
+        window.__stopSchema=event.detail.stopSchema;
+      }else{
+        window.__stopSchema=buildStopSchema();
+      }
+      syncAppFromSettings(settingsStore.get());
+    });
     async function openHandleDB(){
       if(typeof window==='undefined'||!window.indexedDB) return null;
       return new Promise(resolve=>{
@@ -1515,25 +1898,55 @@ Puis ouvrir http://localhost:8000/
           this.loadFromHour();
         },
         refreshCatalog(){
-          const stored = safeGet(KEY_CATS, []);
-          this.cats = Array.isArray(stored) ? stored.map(cat=>{
+          const snapshot=settingsStore.get();
+          const schema=window.__stopSchema || buildStopSchema();
+          const catsSource=Array.isArray(snapshot.categories)?snapshot.categories:[];
+          const catIndex=new Map();
+          catsSource.forEach(cat=>{
             const id=cat?.id || crypto.randomUUID();
-            const name=cat?.name || cat?.label || '';
-            const subsSource = Array.isArray(cat?.subs)?cat.subs:Array.isArray(cat?.sub)?cat.sub:[];
-            const subs=subsSource.map(sub=>({
-              id:sub?.id || crypto.randomUUID(),
-              name:sub?.name || sub?.label || '',
-              defaultMin:Number.isFinite(Number(sub?.defaultMin ?? sub?.defaultMinutes))?Number(sub?.defaultMin ?? sub?.defaultMinutes):5,
-              catId:id
-            }));
-            return {id,name,subs};
-          }):[];
+            catIndex.set((cat?.label||'').trim().toLowerCase(),{
+              id,
+              name:cat?.label || '',
+              type:cat?.type || this.ensureStopType(cat?.type||this.inferTypeFromSchema(cat?.label)),
+              subs:Array.isArray(cat?.sub)?cat.sub.map(sub=>({
+                id:sub?.id || crypto.randomUUID(),
+                name:sub?.label || '',
+                defaultMin:Number.isFinite(Number(sub?.defaultMinutes))?Number(sub?.defaultMinutes):0,
+                catId:id
+              })) : []
+            });
+          });
+          const result=[];
+          Object.keys(schema||{}).forEach(typeLabel=>{
+            const catsForType=schema[typeLabel]||{};
+            Object.keys(catsForType).forEach(label=>{
+              const key=label.trim().toLowerCase();
+              let entry=catIndex.get(key);
+              if(!entry){
+                const id=crypto.randomUUID();
+                entry={
+                  id,
+                  name:label,
+                  type:typeLabel,
+                  subs:(catsForType[label]||[]).map(subLabel=>({
+                    id:`${id}-${subLabel}`,
+                    name:subLabel,
+                    defaultMin:0,
+                    catId:id
+                  }))
+                };
+              }
+              result.push(entry);
+            });
+          });
+          this.cats=result.length?result:Array.from(catIndex.values());
           if(!this.cats.length){
             const fallbackCats = typeof this.config.getCategories==='function' ? this.config.getCategories() || [] : [];
             const fallbackSubs = typeof this.config.getFallbackSubs==='function' ? this.config.getFallbackSubs() || [] : [];
             this.cats = fallbackCats.map(entry=>{
               const label=typeof entry==='string'?entry:String(entry?.label||entry?.name||'');
               const id=entry?.id || label || crypto.randomUUID();
+              const type=entry?.type || this.ensureStopType(entry?.type||this.inferTypeFromSchema(label));
               const subsSource=Array.isArray(entry?.sub)?entry.sub:Array.isArray(entry?.subs)?entry.subs:fallbackSubs;
               const subs=subsSource.map(sub=>{
                 const subLabel=typeof sub==='string'?sub:String(sub?.label||sub?.name||'');
@@ -1544,7 +1957,7 @@ Puis ouvrir http://localhost:8000/
                   catId:id
                 };
               });
-              return {id,name:label,subs};
+              return {id,name:label,subs,type};
             });
           }
         },
@@ -1619,6 +2032,8 @@ Puis ouvrir http://localhost:8000/
             }
           }
           const min = this.normalizeMinutes(c.min ?? c.minutes ?? 0);
+          const ruleRequires=Array.isArray(c.ruleRequires)?c.ruleRequires.slice():[];
+          const ruleDefaults=c.ruleDefaults&&typeof c.ruleDefaults==='object'?c.ruleDefaults:{};
           return {
             id: c.id || c.uid || `cause-${index}-${crypto.randomUUID()}`,
             categoryId: cat ? cat.id : (catId || null),
@@ -1626,7 +2041,9 @@ Puis ouvrir http://localhost:8000/
             subId: subId || null,
             sub: subName || '',
             min,
-            color: this.colorFor(category)
+            color: this.colorFor(category),
+            ruleRequires,
+            ruleDefaults
           };
         },
         persistKey(){
@@ -1686,8 +2103,33 @@ Puis ouvrir http://localhost:8000/
           }
           const cat=this.cats.find(entry=>entry.id===this.quick.categoryId);
           const sub=this.subEntry(this.quick.categoryId,this.quick.subId);
+          const deltaNow=this.currentDelta ?? (this.target - this.total);
+          if(deltaNow!==0){
+            if(!cat||!cat.type){
+              pushToast('Causes','Type ou catégorie manquant','danger');
+              return;
+            }
+            if(!sub){
+              pushToast('Causes','Sélectionner une cause','danger');
+              return;
+            }
+          }
+          const selection={
+            type:cat?.type||'',
+            category:cat?.name||'',
+            cause:sub?.name||''
+          };
+          const ruleResult=applyRules(selection);
+          if((!Number.isFinite(Number(this.quick.min))||Number(this.quick.min)<=0) && Number.isFinite(Number(ruleResult?.defaults?.minutes))){
+            this.quick.min=Number(ruleResult.defaults.minutes);
+          }
+          const normalizedMin=this.normalizeMinutes(this.quick.min);
+          if(normalizedMin<0){
+            pushToast('Causes','Minutes invalides','danger');
+            return;
+          }
           const available=this.remainingBudget();
-          const chosen=this.capQuickMin(this.normalizeMinutes(this.quick.min));
+          const chosen=this.capQuickMin(normalizedMin);
           const effective=available>0?Math.min(chosen,available):chosen;
           const payload={
             id: crypto.randomUUID(),
@@ -1695,11 +2137,12 @@ Puis ouvrir http://localhost:8000/
             category: cat?cat.name:'',
             subId: sub?sub.id:null,
             sub: sub?sub.name:'',
-            min: effective
+            min: effective,
+            ruleRequires:Array.isArray(ruleResult?.requires)?ruleResult.requires.slice():[],
+            ruleDefaults:ruleResult?.defaults||{}
           };
           this.items.push(this.normalize(payload, this.items.length));
           this.quick.subId='';
-          const deltaNow=this.currentDelta ?? (this.target - this.total);
           const remainAfter=Math.max(0,(deltaNow||0)-effective);
           if(remainAfter>0){
             this.quick.min=this.normalizeMinutes(Math.min(remainAfter,effective||remainAfter));
@@ -3133,6 +3576,16 @@ const demoState = {
             return current;
           });
           this.persist();
+        },
+        publishSettings(){
+          try{
+            settingsStore.persist();
+          }catch(err){console.warn('publish persist',err);}
+          const snapshot=settingsStore.get();
+          const schema=buildStopSchema();
+          window.__stopSchema=schema;
+          window.dispatchEvent(new CustomEvent('prodtrack:params-changed',{detail:{stopSchema:schema,rules:snapshot.rules||{rules:[]}}}));
+          pushToast('Paramètres','Configuration publiée','success');
         },
         selectHourByTime(value){
           const hh=String(value||'').slice(0,5);
@@ -5229,54 +5682,23 @@ const demoState = {
           pushToast('Événements','Exports pareto indisponibles (module désactivé)','info');
         },
         getCategoryStore(){
-          const rawCats=safeGet(KEY_CATS,[]);
-          const rawPool=safeGet(KEY_SUBPOOL,[]);
-          const categories=Array.isArray(rawCats)?rawCats.map((cat,index)=>({
-            id:cat?.id||crypto.randomUUID(),
-            label:String(cat?.label||cat?.name||'').trim(),
-            order:Number.isFinite(Number(cat?.order))?Number(cat.order):index,
-            type:String(cat?.type||cat?.stopType||'').trim(),
-            sub:Array.isArray(cat?.sub)?cat.sub:Array.isArray(cat?.subs)?cat.subs:[]
-          })) : [];
-          categories.forEach((cat,idx)=>{
-            cat.order=idx;
-            cat.sub=Array.isArray(cat.sub)?cat.sub.map(sub=>({
-              id:sub?.id||crypto.randomUUID(),
-              label:String(sub?.label||sub?.name||'').trim(),
-              defaultMinutes:Math.max(0,Math.round(Number(sub?.defaultMinutes ?? sub?.defaultMin ?? 0)))
-            })) : [];
-            const resolved=this.ensureStopType(cat.type||this.inferTypeFromSchema(cat.label));
-            cat.type=resolved;
-          });
-          const pool=Array.isArray(rawPool)?rawPool.map(sub=>({
-            id:sub?.id||crypto.randomUUID(),
-            label:String(sub?.label||sub?.name||'').trim(),
-            defaultMinutes:Math.max(0,Math.round(Number(sub?.defaultMinutes ?? sub?.defaultMin ?? 0)))
-          })) : [];
-          return {categories,pool,stopTypes:this.stopTypes};
+          const snapshot=settingsStore.get();
+          const categories=deepClone(snapshot.categories||[]);
+          const pool=deepClone(snapshot.pool||[]);
+          const stopTypes=Array.isArray(snapshot.stopTypes)?snapshot.stopTypes.slice():[];
+          return {categories,pool,stopTypes};
         },
         persistCategoryStore(store){
-          const payloadCats=(store.categories||[]).map((cat,index)=>({
-            id:cat.id||crypto.randomUUID(),
-            label:cat.label||'',
-            order:index,
-            type:cat.type||'Autres',
-            sub:Array.isArray(cat.sub)?cat.sub.map(sub=>({
-              id:sub.id||crypto.randomUUID(),
-              label:sub.label||'',
-              defaultMinutes:Math.max(0,Math.round(Number(sub.defaultMinutes||0)))
-            })) : []
-          }));
-          const payloadPool=(store.pool||[]).map(sub=>({
-            id:sub.id||crypto.randomUUID(),
-            label:sub.label||'',
-            defaultMinutes:Math.max(0,Math.round(Number(sub.defaultMinutes||0)))
-          }));
-          const typesFromStore=Array.isArray(store.stopTypes)?store.stopTypes:payloadCats.map(cat=>cat.type);
+          const payloadCats=Array.isArray(store?.categories)?store.categories:[];
+          const payloadPool=Array.isArray(store?.pool)?store.pool:[];
+          const typesFromStore=Array.isArray(store?.stopTypes)?store.stopTypes:payloadCats.map(cat=>cat.type);
           const normalizedTypes=this.normalizeStopTypeList(typesFromStore);
-          safeSet(KEY_CATS,payloadCats);
-          safeSet(KEY_SUBPOOL,payloadPool);
-          safeSet(KEY_STOP_TYPES,normalizedTypes);
+          settingsStore.set({
+            categories:payloadCats,
+            pool:payloadPool,
+            stopTypes:normalizedTypes
+          });
+          settingsStore.persist();
           window.dispatchEvent(new CustomEvent('cats:updated',{detail:{categories:payloadCats,pool:payloadPool,types:normalizedTypes}}));
         },
         importCategoriesFromCSV(file){
@@ -5519,32 +5941,16 @@ const demoState = {
       }));
     });
 
-    function buildStopSchemaFromTaxonomy(){
-      const store = typeof getCategoryStore==='function' ? getCategoryStore() : null;
-      const schema = {};
-      (store?.stopTypes||[]).forEach(t => schema[t] = {});
-      (store?.categories||[]).forEach(cat=>{
-        const t = (cat.type || 'Autres');
-        schema[t] = schema[t] || {};
-        schema[t][cat.label] = (cat.sub||[]).map(s=>s.label);
-      });
-      return schema;
-    }
     function loadRules(){
-      try { return JSON.parse(localStorage.getItem('pp:params:rules') || '{"rules":[]}'); }
-      catch { return { rules: [] }; }
+      const snapshot=settingsStore.get();
+      return snapshot.rules && typeof snapshot.rules==='object'?snapshot.rules:{rules:[]};
     }
     function saveRules(json){
-      localStorage.setItem('pp:params:rules', JSON.stringify(json));
+      settingsStore.set({rules:json});
+      settingsStore.persist();
     }
     function testRules(sel){
-      const r = loadRules().rules || [];
-      const hit = r.find(x =>
-        (!x.when?.type || x.when.type === sel.type) &&
-        (!x.when?.category || x.when.category === sel.category) &&
-        (!x.when?.cause || x.when.cause === sel.cause)
-      );
-      return hit ? { requires: hit.requires||[], defaults: hit.defaults||{} } : { requires:[], defaults:{} };
+      return applyRules(sel);
     }
     function loadReferentiels(){
       try { return JSON.parse(localStorage.getItem('pp:params:refs') || '{}'); }
@@ -5555,10 +5961,30 @@ const demoState = {
         rulesJson: JSON.stringify(loadRules(), null, 2),
         status: '',
         sel: { type:'', category:'', cause:'' },
-        stopTypes: (typeof getCategoryStore==='function' ? (getCategoryStore()?.stopTypes||[]) : []),
+        stopTypes: Object.keys(window.__stopSchema||{}),
         cats: [],
         subs: [],
         testResult: { requires:[], defaults:{} },
+        init(){
+          this.refreshStopTypes();
+          this._settingsHandler=()=>{
+            this.refreshStopTypes();
+            if(this.sel.type){ this.onType(); }
+            if(this.sel.category){ this.onCat(); }
+          };
+          window.addEventListener('settings:updated', this._settingsHandler);
+          window.addEventListener('prodtrack:params-changed', this._settingsHandler);
+          this.$el.addEventListener('alpine:destroy',()=>{
+            window.removeEventListener('settings:updated', this._settingsHandler);
+            window.removeEventListener('prodtrack:params-changed', this._settingsHandler);
+          });
+        },
+        refreshStopTypes(){
+          this.stopTypes = Object.keys(window.__stopSchema||{});
+          if(this.sel.type && !this.stopTypes.includes(this.sel.type)){
+            this.sel.type='';
+          }
+        },
         onType(){
           const store = typeof getCategoryStore==='function' ? getCategoryStore() : null;
           const t = this.sel.type;
@@ -5599,7 +6025,7 @@ const demoState = {
             const obj = JSON.parse(this.rulesJson||'{}');
             if(!obj.rules || !Array.isArray(obj.rules)) throw new Error('Le JSON doit contenir {"rules":[...]}');
             saveRules(obj);
-            const stopSchema = buildStopSchemaFromTaxonomy();
+            const stopSchema = buildStopSchema();
             const rules = obj;
             const referentiels = loadReferentiels(); // placeholder
             window.dispatchEvent(new CustomEvent('prodtrack:params-changed', { detail:{ stopSchema, rules, referentiels } }));
@@ -5694,6 +6120,57 @@ const demoState = {
       }
     }
 
+    function settingsStoreSnapshotToForm(snapshot) {
+      const data = snapshot && typeof snapshot === 'object' ? snapshot : settingsStore.get();
+      return {
+        ligne: data.lineName || '',
+        saveTarget: data.saveTarget || 'local',
+        savePath: data.savePath || '',
+        types: Array.isArray(data.stopTypes) ? data.stopTypes : [],
+        categories: {
+          categories: Array.isArray(data.categories) ? data.categories : [],
+          pool: Array.isArray(data.pool) ? data.pool : [],
+          stopTypes: Array.isArray(data.stopTypes) ? data.stopTypes : []
+        },
+        sousCategories: [],
+        oeeCible: Array.isArray(data.oeeProfiles) ? data.oeeProfiles : []
+      };
+    }
+
+    function applyToCentralStoreFromNormalized(normalized) {
+      if (!normalized || typeof normalized !== 'object') return;
+      const patch = {};
+      if (Object.prototype.hasOwnProperty.call(normalized, 'ligne')) {
+        patch.lineName = typeof normalized.ligne === 'string' ? normalized.ligne : '';
+      }
+      if (Object.prototype.hasOwnProperty.call(normalized, 'saveTarget')) {
+        patch.saveTarget = typeof normalized.saveTarget === 'string' ? normalized.saveTarget : 'local';
+      }
+      if (Object.prototype.hasOwnProperty.call(normalized, 'savePath')) {
+        patch.savePath = typeof normalized.savePath === 'string' ? normalized.savePath : '';
+      }
+      if (Object.prototype.hasOwnProperty.call(normalized, 'types') && Array.isArray(normalized.types)) {
+        patch.stopTypes = normalized.types;
+      }
+      if (Object.prototype.hasOwnProperty.call(normalized, 'categories') && normalized.categories && typeof normalized.categories === 'object' && !Array.isArray(normalized.categories)) {
+        if (Array.isArray(normalized.categories.categories)) {
+          patch.categories = normalized.categories.categories;
+        }
+        if (Array.isArray(normalized.categories.pool)) {
+          patch.pool = normalized.categories.pool;
+        }
+        if (Array.isArray(normalized.categories.stopTypes)) {
+          patch.stopTypes = normalized.categories.stopTypes;
+        }
+      }
+      if (Object.prototype.hasOwnProperty.call(normalized, 'oeeCible') && Array.isArray(normalized.oeeCible)) {
+        patch.oeeProfiles = normalized.oeeCible;
+      }
+      if (Object.keys(patch).length) {
+        settingsStore.set(patch);
+      }
+    }
+
     function settingsStoreWriteForm(data) {
       if (!data || typeof data !== 'object') return;
       settingsStoreIsApplying = true;
@@ -5737,6 +6214,8 @@ const demoState = {
         console.error('Save settings failed', error);
         alert('Erreur de sauvegarde des paramètres (quota navigateur atteint ?)');
       }
+      applyToCentralStoreFromNormalized(normalized);
+      settingsStore.persist();
     }
 
     function settingsStoreDebouncedSave() {
@@ -5767,24 +6246,28 @@ const demoState = {
       settingsStoreMigrateLegacy();
       const key = settingsStoreCurrentKey(forLine);
       const raw = localStorage.getItem(key);
-      if (!raw) return null;
-      try {
-        const obj = JSON.parse(raw);
-        return obj && typeof obj === 'object' && obj.data ? obj.data : null;
-      } catch {
-        return null;
+      if (raw) {
+        try {
+          const obj = JSON.parse(raw);
+          const data = obj && typeof obj === 'object' && obj.data ? obj.data : null;
+          if (data) {
+            applyToCentralStoreFromNormalized(data);
+            settingsStore.persist();
+            return data;
+          }
+        } catch {/* noop */}
       }
+      return settingsStoreSnapshotToForm(settingsStore.get());
     }
 
     function settingsStoreExportJSON() {
-      const normalized = settingsStoreNormalizeData(settingsStoreReadForm());
-      const lineRaw = typeof normalized.ligne === 'string' && normalized.ligne ? normalized.ligne : 'default';
+      const snapshot = settingsStore.get();
+      const lineRaw = snapshot.lineName || 'default';
       const payload = {
         __type: 'tracker.settings',
         __v: 1,
         exportedAt: new Date().toISOString(),
-        lineKey: settingsStoreCurrentKey(lineRaw),
-        data: normalized
+        settings: snapshot
       };
       const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
       const a = document.createElement('a');
@@ -5801,9 +6284,11 @@ const demoState = {
       reader.onload = () => {
         try {
           const obj = JSON.parse(reader.result);
-          const data = obj && typeof obj === 'object' && obj.data ? obj.data : obj;
-          settingsStoreWriteForm(data);
-          settingsStoreSave();
+          const data = obj && typeof obj === 'object' && (obj.settings || obj.data) ? (obj.settings || obj.data) : obj;
+          const snapshot = normalizeSettings(data);
+          settingsStore.replace(snapshot);
+          settingsStore.persist();
+          settingsStoreWriteForm(settingsStoreSnapshotToForm(snapshot));
           alert('Paramètres importés.');
         } catch (error) {
           console.error('Import settings failed', error);
@@ -5817,15 +6302,10 @@ const demoState = {
       const raw = settingsStoreReadForm();
       const key = settingsStoreCurrentKey(raw.ligne);
       localStorage.removeItem(key);
-      settingsStoreQsa().forEach((el) => {
-        if (el.type === 'checkbox') {
-          el.checked = false;
-        } else {
-          el.value = '';
-        }
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-        el.dispatchEvent(new Event('change', { bubbles: true }));
-      });
+      const snapshot = normalizeSettings({});
+      settingsStore.replace(snapshot);
+      settingsStore.persist();
+      settingsStoreWriteForm(settingsStoreSnapshotToForm(snapshot));
       alert('Paramètres réinitialisés pour cette ligne.');
     }
 
@@ -5847,6 +6327,10 @@ const demoState = {
           case 'types':
             if (Array.isArray(payload) && typeof app.setStopTypes === 'function') {
               app.setStopTypes(payload);
+            }
+            if (Array.isArray(payload)) {
+              settingsStore.set({ stopTypes: payload });
+              settingsStore.persist();
             }
             break;
           case 'categories': {
@@ -5879,6 +6363,8 @@ const demoState = {
               if (typeof app.persist === 'function') {
                 app.persist();
               }
+              settingsStore.set({ oeeProfiles: payload });
+              settingsStore.persist();
             }
             break;
           case 'typeCategoryMap':
@@ -6453,37 +6939,24 @@ const demoState = {
   // Reconstruit le stopSchema depuis Paramètres (catégories + sous-cats) et le mapping Type↔Cat
   function rebuildStopSchemaFromParams(){
     const app = (document.querySelector('[x-data="appState"]')?.__x || {}).$data;
-    if (!app || !Array.isArray(app.settings?.categories)) return;
+    if (!app) return;
 
-    const map = readMap();
-    const schema = {};
-    const stopTypesSet = new Set(app.stopTypes || []);
+    const schema = buildStopSchema();
+    window.__stopSchema = schema;
+    const stopTypes = settingsStore.get().stopTypes || Object.keys(schema);
 
-    for (const cat of app.settings.categories){
-      const catLabel = (cat?.label || '').trim();
-      const subs = (cat?.sub || []).map(s => s?.label || '').filter(Boolean);
-
-      // types autorisés pour cette catégorie selon le mapping
-      const allowed = map.filter(p => p?.category === catLabel && p?.type).map(p => p.type);
-      const uniqAllowed = Array.from(new Set(allowed));
-
-      // si pas de mapping, on retombe sur le type simple éventuellement stocké sur la catégorie
-      const fallbackTypes = uniqAllowed.length ? uniqAllowed
-                           : (cat?.type ? [cat.type] : []);
-
-      for (const t of fallbackTypes){
-        if (!t) continue;
-        stopTypesSet.add(t);
-        if (!schema[t]) schema[t] = {};
-        schema[t][catLabel] = subs.slice();
-      }
+    if (app.settings) {
+      app.settings.stopSchema = schema;
+      app.settings.stopTypes = Array.isArray(stopTypes) ? stopTypes.slice() : [];
     }
-
-    // Applique au state pour piloter les <select> existants
-    app.settings.stopSchema = schema;
-    app.stopTypes = Array.from(stopTypesSet);
-    // Réveille Alpine
-    app.persist && app.persist();
+    if (app.state && app.state.settings) {
+      app.state.settings.stopSchema = schema;
+      app.state.settings.stopTypes = Array.isArray(stopTypes) ? stopTypes.slice() : [];
+    }
+    app.stopTypes = Array.isArray(stopTypes) ? stopTypes.slice() : [];
+    if (typeof app.persist === 'function') {
+      app.persist();
+    }
   }
 
   window.rebuildStopSchemaFromParams = rebuildStopSchemaFromParams;
