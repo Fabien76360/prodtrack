@@ -69,24 +69,6 @@ Puis ouvrir http://localhost:8000/
     body.density-large{font-size:18px;}
     @media (prefers-reduced-motion: reduce){*{animation-duration:0.01ms!important;animation-iteration-count:1!important;transition-duration:0.01ms!important;}}
   </style>
-  <script>
-  // CHANGELOG:
-  // - Events v1: disabled & purged (feature-flagged)
-  // - Removed UI: causes wizard, paretos liés, exports événement
-  // - Stubbed EventsV2 hooks (init/mount/export)
-  // - Ensured zero console errors; preserved core flows
-  const EVENTS_ENABLED = false; // kill-switch temporaire
-
-  window.EventsV2 = {
-    enabled: EVENTS_ENABLED,
-    init(){ /* no-op v2 stub */ },
-    mountUI(){ /* no-op v2 stub */ },
-    export:{ toCSV(){ return ''; }, toJSON(){ return {}; } }
-  };
-
-  function loadEventsConfig(){ return Promise.resolve(null); } // STUB v2
-  // TODO(v2): réintroduire module événements (wizard 3 étapes, listes contextuelles allégées, exports dédiés).
-  </script>
 </head>
 <body class="bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100 density-standard" x-data="appState" x-init="initApp()">
   <div class="min-h-screen grid xl:grid-cols-[280px_1fr] gap-6 px-4 py-6 md:px-6 lg:px-8">
@@ -346,7 +328,9 @@ Puis ouvrir http://localhost:8000/
     <button type="button" class="h-11 min-w-28 px-4 py-2 rounded-xl bg-primary text-white whitespace-nowrap min-w-[160px]" @click="exportCSV" aria-label="Exporter le jour en CSV">Export CSV</button>
     <button type="button" class="h-11 min-w-28 px-4 py-2 rounded-xl bg-secondary text-slate-900 whitespace-nowrap min-w-[160px]" @click="exportJSON" aria-label="Exporter le jour en JSON">Export JSON</button>
     <button type="button" class="h-11 min-w-28 px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 whitespace-nowrap min-w-[160px]" @click="exportPDF" aria-label="Exporter le jour en PDF">Export PDF</button>
-    <!-- REMOVED: events v1 pareto export buttons -->
+    <button type="button" class="h-11 min-w-28 px-4 py-2 rounded-xl bg-amber-200 text-amber-900 whitespace-nowrap min-w-[160px]" @click="exportParetoCSV" aria-label="Exporter le pareto du jour en CSV">Export CSV Pareto</button>
+    <!-- PATCH pareto-type: export dédié -->
+    <button type="button" class="h-11 min-w-28 px-4 py-2 rounded-xl bg-amber-100 text-amber-900 whitespace-nowrap min-w-[160px]" @click="exportParetoTypeCSV" aria-label="Exporter le pareto type en CSV">Export CSV Pareto Type</button>
     <button type="button" class="h-11 min-w-28 px-4 py-2 rounded-xl bg-emerald-500 text-white whitespace-nowrap min-w-[160px]" @click="saveDayBundle()" :disabled="!hasValidatedHours()" :class="!hasValidatedHours()?'opacity-60 cursor-not-allowed':''" :title="hasValidatedHours()?'':'Valide au moins une heure pour enregistrer.'" aria-label="Enregistrer la journée dans le dossier choisi">Enregistrer la journée</button>
     <button type="button" class="h-11 min-w-28 px-4 py-2 rounded-xl bg-indigo-500 text-white whitespace-nowrap min-w-[160px]" @click="exportDayJSON()" :disabled="!hasValidatedHours()" :class="!hasValidatedHours()?'opacity-60 cursor-not-allowed':''" aria-label="Exporter le journal de production en JSON autonome">Exporter la journée</button>
   </footer>
@@ -430,7 +414,162 @@ Puis ouvrir http://localhost:8000/
           </div>
         </label>
       </section>
-      <!-- REMOVED: events v1 causes form (feature flag OFF) -->
+      <!-- PATCH UX: 3 niveaux hiérarchiques pour les causes -->
+      <section class="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/70 p-5 space-y-4" :class="currentHour.closed?'opacity-60 pointer-events-none':''" :aria-disabled="currentHour.closed">
+        <header class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 class="font-semibold text-[clamp(1.05rem,0.65vw+0.7rem,1.35rem)] text-slate-700 dark:text-slate-100">Causes</h3>
+            <p class="text-xs text-slate-500">Sélectionnez Type → Catégorie → Sous-catégorie</p>
+          </div>
+          <span class="px-3 py-1 rounded-full text-xs font-semibold" :class="currentHourMetrics.delta===0?'bg-emerald-100 text-emerald-700':'bg-rose-100 text-rose-700'" x-text="currentHourMetrics.delta===0?'Delta équilibré':'Delta à ajuster'"></span>
+        </header>
+        <div class="grid md:grid-cols-3 gap-3" @keydown.enter.prevent="addCause">
+          <label class="flex flex-col gap-1">
+            <span class="text-xs uppercase tracking-wide text-slate-500">Type d’arrêt</span>
+            <select id="type" x-model="causeDraft.type" @change="causeDraft.cat='';causeDraft.sub='';" class="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/80 dark:bg-slate-950/60 px-3 py-2 focus:ring-2 focus:ring-primary" :disabled="currentHour.closed">
+              <option value="">Sélectionner</option>
+              <template x-for="type in Object.keys(settings.stopSchema||{})" :key="'type-'+type">
+                <option :value="type" x-text="type"></option>
+              </template>
+            </select>
+          </label>
+          <label class="flex flex-col gap-1">
+            <span class="text-xs uppercase tracking-wide text-slate-500">Catégorie</span>
+            <select id="categorie" x-model="causeDraft.cat" @change="causeDraft.sub='';" class="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/80 dark:bg-slate-950/60 px-3 py-2 focus:ring-2 focus:ring-primary" :disabled="!causeDraft.type || currentHour.closed">
+              <option value="">Sélectionner</option>
+              <template x-for="cat in Object.keys(settings.stopSchema?.[causeDraft.type]||{})" :key="'cat-'+cat">
+                <option :value="cat" x-text="cat"></option>
+              </template>
+            </select>
+          </label>
+          <label class="flex flex-col gap-1" id="evt_field_cause5m" style="display:none;">
+            <span class="text-xs uppercase tracking-wide text-slate-500">Cause 5M</span>
+            <select id="cause5m" x-model="causeDraft.cause5m" class="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/80 dark:bg-slate-950/60 px-3 py-2 focus:ring-2 focus:ring-primary" :disabled="currentHour.closed">
+              <option value="">Sélectionner</option>
+            </select>
+          </label>
+          <label class="flex flex-col gap-1">
+            <span class="text-xs uppercase tracking-wide text-slate-500">Sous-catégorie</span>
+            <select id="sous_categorie" x-model="causeDraft.sub" class="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/80 dark:bg-slate-950/60 px-3 py-2 focus:ring-2 focus:ring-primary" :disabled="!causeDraft.cat || currentHour.closed">
+              <option value="">Sélectionner</option>
+              <template x-for="sub in (settings.stopSchema?.[causeDraft.type]?.[causeDraft.cat]||[])" :key="'sub-'+sub">
+                <option :value="sub" x-text="sub"></option>
+              </template>
+            </select>
+          </label>
+          <label class="flex flex-col gap-1" id="evt_field_detail" style="display:none;">
+            <span class="text-xs uppercase tracking-wide text-slate-500">Détail</span>
+            <select id="detail" x-model="causeDraft.detail_code" class="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/80 dark:bg-slate-950/60 px-3 py-2 focus:ring-2 focus:ring-primary" :disabled="currentHour.closed">
+              <option value="">Sélectionner</option>
+            </select>
+          </label>
+        </div>
+        <div class="grid md:grid-cols-2 gap-3" id="evt_dynamic_fields" style="display:none;">
+          <label class="flex flex-col gap-1" id="evt_field_equipement" style="display:none;">
+            <span class="text-xs uppercase tracking-wide text-slate-500">Équipement</span>
+            <select id="equipement" x-model="causeDraft.equipement" class="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/80 dark:bg-slate-950/60 px-3 py-2 focus:ring-2 focus:ring-primary" :disabled="currentHour.closed">
+              <option value="">Sélectionner</option>
+            </select>
+          </label>
+          <label class="flex flex-col gap-1" id="evt_field_sous_ensemble" style="display:none;">
+            <span class="text-xs uppercase tracking-wide text-slate-500">Sous-ensemble</span>
+            <select id="sous_ensemble" x-model="causeDraft.sous_ensemble" class="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/80 dark:bg-slate-950/60 px-3 py-2 focus:ring-2 focus:ring-primary" :disabled="currentHour.closed">
+              <option value="">Sélectionner</option>
+            </select>
+          </label>
+          <label class="flex flex-col gap-1" id="evt_field_article" style="display:none;">
+            <span class="text-xs uppercase tracking-wide text-slate-500">Article</span>
+            <select id="article" x-model="causeDraft.article" class="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/80 dark:bg-slate-950/60 px-3 py-2 focus:ring-2 focus:ring-primary" :disabled="currentHour.closed">
+              <option value="">Sélectionner</option>
+            </select>
+          </label>
+          <label class="flex flex-col gap-1" id="evt_field_lot" style="display:none;">
+            <span class="text-xs uppercase tracking-wide text-slate-500">Lot</span>
+            <input type="text" id="lot" x-model="causeDraft.lot" class="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/80 dark:bg-slate-950/60 px-3 py-2 focus:ring-2 focus:ring-primary" :disabled="currentHour.closed">
+          </label>
+          <label class="flex flex-col gap-1" id="evt_field_type_defaut" style="display:none;">
+            <span class="text-xs uppercase tracking-wide text-slate-500">Type de défaut</span>
+            <select id="type_defaut" x-model="causeDraft.type_defaut" class="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/80 dark:bg-slate-950/60 px-3 py-2 focus:ring-2 focus:ring-primary" :disabled="currentHour.closed">
+              <option value="">Sélectionner</option>
+            </select>
+          </label>
+          <label class="flex flex-col gap-1" id="evt_field_raison_cadence" style="display:none;">
+            <span class="text-xs uppercase tracking-wide text-slate-500">Raison cadence</span>
+            <textarea id="raison_cadence" x-model="causeDraft.raison_cadence" class="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/80 dark:bg-slate-950/60 px-3 py-2 h-20 focus:ring-2 focus:ring-primary" :disabled="currentHour.closed"></textarea>
+          </label>
+          <label class="flex flex-col gap-1" id="evt_field_zone" style="display:none;">
+            <span class="text-xs uppercase tracking-wide text-slate-500">Zone</span>
+            <select id="zone" x-model="causeDraft.zone" class="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/80 dark:bg-slate-950/60 px-3 py-2 focus:ring-2 focus:ring-primary" :disabled="currentHour.closed">
+              <option value="">Sélectionner</option>
+            </select>
+          </label>
+          <label class="flex flex-col gap-1" id="evt_field_utilite" style="display:none;">
+            <span class="text-xs uppercase tracking-wide text-slate-500">Utilité</span>
+            <select id="utilite" x-model="causeDraft.utilite" class="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/80 dark:bg-slate-950/60 px-3 py-2 focus:ring-2 focus:ring-primary" :disabled="currentHour.closed">
+              <option value="">Sélectionner</option>
+            </select>
+          </label>
+        </div>
+        <div class="flex flex-wrap items-end gap-3">
+          <label class="flex flex-col gap-1">
+            <span class="text-xs uppercase tracking-wide text-slate-500">Minutes</span>
+            <input type="number" min="0" step="1" x-model.number="causeDraft.minutes" class="w-32 rounded-xl border border-slate-300 dark:border-slate-700 bg-white/80 dark:bg-slate-950/60 px-3 py-2 focus:ring-2 focus:ring-primary" :disabled="currentHour.closed">
+          </label>
+          <button type="button" class="px-4 py-2 rounded-xl bg-primary text-white font-semibold disabled:opacity-60" @click="addCause" :disabled="currentHour.closed">+ Ajouter</button>
+          <div class="ml-auto text-sm text-slate-500" aria-live="polite">
+            Minutes restantes : <span class="font-semibold" x-text="Math.max(0,currentHourMetrics.toJustify - currentCauseMinutes())"></span>
+          </div>
+        </div>
+        <div :class="ui.spacing('space-y-2','space-y-3','space-y-5')">
+          <div class="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800">
+            <table class="min-w-full text-sm">
+              <thead class="bg-slate-50 dark:bg-slate-900/60 text-left text-xs uppercase tracking-wide text-slate-500">
+                <tr>
+                  <th class="px-4 py-2">Type</th>
+                  <th class="px-4 py-2">Catégorie</th>
+                  <th class="px-4 py-2">Sous-catégorie</th>
+                  <th class="px-4 py-2 text-right">Minutes</th>
+                  <th class="px-4 py-2 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                <template x-if="!currentHour.causes.length">
+                  <tr>
+                    <td class="px-4 py-3 text-sm text-slate-500" colspan="5">Aucune cause saisie pour l’instant.</td>
+                  </tr>
+                </template>
+                <template x-for="cause in currentHour.causes" :key="cause.uid">
+                  <tr class="border-t border-slate-200 dark:border-slate-800">
+                    <td class="px-4 py-2 space-y-1">
+                      <span :class="badgeClassForType(cause.type)" x-text="cause.type || 'Autres'"></span>
+                      <template x-if="cause.event_code">
+                        <span class="block text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200" x-text="cause.event_code"></span>
+                      </template>
+                    </td>
+                    <td class="px-4 py-2" x-text="cause.cat || '—'"></td>
+                    <td class="px-4 py-2" x-text="cause.sub || '—'"></td>
+                    <td class="px-4 py-2 text-right font-semibold" x-text="new Intl.NumberFormat('fr-FR').format(cause.minutes)"></td>
+                    <td class="px-4 py-2 text-right">
+                      <button type="button" class="px-3 py-1 rounded-lg bg-rose-100 text-rose-700" @click="removeCause(cause.uid)">Supprimer</button>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+              <tfoot x-show="currentHour.causes.length">
+                <tr class="border-t border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/60">
+                  <th class="px-4 py-2 text-left" colspan="3">Total</th>
+                  <td class="px-4 py-2 text-right font-semibold" x-text="new Intl.NumberFormat('fr-FR').format(currentCauseMinutes())"></td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+        <div class="flex flex-wrap justify-end gap-3">
+          <button type="button" class="px-4 py-2 rounded-xl bg-primary text-white" @click="evt_exportEventsCSV()">Export événements CSV</button>
+          <button type="button" class="px-4 py-2 rounded-xl bg-secondary text-slate-900" @click="evt_exportEventsJSON()">Export événements JSON</button>
+        </div>
+      </section>
       <!-- PATCH UX: synthèse et validation visuelle -->
       <section class="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/70 p-5 space-y-4" aria-live="polite">
         <div class="flex flex-wrap items-center justify-between gap-4">
@@ -451,8 +590,8 @@ Puis ouvrir http://localhost:8000/
           </article>
           <article class="rounded-2xl border border-slate-200 dark:border-slate-800 px-4 py-3">
             <p class="text-xs uppercase text-slate-500">Minutes causes</p>
-            <p class="font-semibold text-[clamp(1.05rem,0.6vw+0.7rem,1.35rem)]">0</p>
-            <p class="text-xs text-slate-500 mt-1">Reste : <span>0</span></p>
+            <p class="font-semibold text-[clamp(1.05rem,0.6vw+0.7rem,1.35rem)]" x-text="currentCauseMinutes()"></p>
+            <p class="text-xs text-slate-500 mt-1">Reste : <span x-text="Math.max(0,currentHourMetrics.toJustify - currentCauseMinutes())"></span></p>
           </article>
           <article class="rounded-2xl border border-slate-200 dark:border-slate-800 px-4 py-3">
             <p class="text-xs uppercase text-slate-500">Validation</p>
@@ -529,11 +668,6 @@ Puis ouvrir http://localhost:8000/
     </section>
     <section x-show="activeView==='settings'" x-transition class="space-y-6">
       <div class="max-w-7xl mx-auto w-full px-3 sm:px-4 lg:px-6">
-        <div class="flex flex-wrap items-center gap-3 mb-6">
-          <button type="button" class="px-4 py-2 rounded-xl bg-primary text-white border border-primary text-sm font-semibold transition" disabled>Paramétrage général</button>
-          <!-- REMOVED: events v1 settings tab button -->
-        </div>
-        <div class="space-y-6">
       <article class="bg-white dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-lg">
         <header class="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-4 items-start">
           <div>
@@ -819,69 +953,228 @@ Puis ouvrir http://localhost:8000/
           <p class="text-sm text-slate-500 dark:text-slate-400" x-show="!storage.supported">API File System Access indisponible — utilisation des téléchargements classiques.</p>
           <p class="text-sm text-slate-500 dark:text-slate-400" x-show="storage.dirHandle" x-cloak>Le dossier sélectionné sera utilisé pour les prochains exports.</p>
         </section>
-        <div class="mt-8 rounded-3xl border border-slate-200 dark:border-slate-800 p-4 space-y-4 bg-white/80 dark:bg-slate-900/50"
-             x-data="rulesModule()">
-          <header class="flex items-center justify-between">
+        <div class="mt-8">
+          <header class="flex items-center justify-between mb-4">
             <div>
-              <h3 class="font-semibold text-[clamp(1.05rem,0.65vw+0.7rem,1.35rem)]">Règles dynamiques</h3>
-              <p class="text-sm text-slate-500 dark:text-slate-400">when → requires + defaults</p>
-            </div>
-            <div class="flex gap-2">
-              <button type="button" class="px-3 py-1 rounded-lg bg-slate-200 dark:bg-slate-800 text-xs" @click="resetToSample()">Exemple</button>
-              <button type="button" class="px-3 py-1 rounded-lg bg-emerald-500/80 hover:bg-emerald-400 text-white text-xs font-semibold" @click="save()">Sauver</button>
-              <button type="button" class="px-3 py-1 rounded-lg bg-primary text-white text-xs font-semibold" @click="publish()">Publier</button>
+              <h3 class="font-semibold text-[clamp(1.05rem,0.65vw+0.7rem,1.35rem)]">Catégories &amp; Sous-catégories</h3>
+              <p class="text-sm text-slate-500 dark:text-slate-400">Organisez la hiérarchie et assignez les causes fréquentes.</p>
             </div>
           </header>
-
-          <!-- Éditeur JSON -->
-          <label class="flex flex-col gap-2">
-            <span class="text-xs uppercase tracking-wide text-slate-500">JSON des règles</span>
-            <textarea x-model="rulesJson" class="w-full h-48 px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950/60 font-mono text-xs"></textarea>
-            <p class="text-xs text-slate-500" x-text="status"></p>
-          </label>
-
-          <!-- Simulateur -->
-          <div class="grid md:grid-cols-4 gap-3">
-            <label class="flex flex-col gap-1">
-              <span class="text-xs uppercase text-slate-500">Type</span>
-              <select x-model="sel.type" @change="onType()" class="px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950/60">
-                <option value="">Sélectionner</option>
-                <template x-for="t in stopTypes" :key="t"><option :value="t" x-text="t"></option></template>
-              </select>
-            </label>
-            <label class="flex flex-col gap-1">
-              <span class="text-xs uppercase text-slate-500">Catégorie</span>
-              <select x-model="sel.category" @change="onCat()" class="px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950/60">
-                <option value="">Sélectionner</option>
-                <template x-for="c in cats" :key="c"><option :value="c" x-text="c"></option></template>
-              </select>
-            </label>
-            <label class="flex flex-col gap-1">
-              <span class="text-xs uppercase text-slate-500">Cause</span>
-              <select x-model="sel.cause" class="px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950/60">
-                <option value="">Sélectionner</option>
-                <template x-for="s in subs" :key="s"><option :value="s" x-text="s"></option></template>
-              </select>
-            </label>
-            <div class="flex items-end">
-              <button type="button" class="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-800" @click="test()">Tester</button>
+          <div x-data="catsMgr()" x-init="init()" @keydown.escape.stop="handleEscape()" class="space-y-4">
+            <div class="rounded-3xl border border-slate-200 dark:border-slate-800 p-4 space-y-4 bg-white/80 dark:bg-slate-900/50">
+              <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_auto] gap-3 items-start">
+                <div class="flex-1">
+                  <label class="w-full">
+                    <span class="sr-only">Recherche catégories et sous-catégories</span>
+                    <input type="search" x-model="query" @input="filterCatalog($event.target.value)" placeholder="Rechercher une catégorie ou une sous-catégorie" class="w-full px-4 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950/60 focus:ring-2 focus:ring-primary" aria-label="Recherche globale catégories et sous-catégories">
+                  </label>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-2 justify-items-start lg:justify-items-end">
+                  <button type="button" class="px-4 py-2 rounded-xl bg-primary text-white text-sm font-semibold" @click="startAddCategory" aria-label="Ajouter une catégorie">Ajouter catégorie</button>
+                  <button type="button" class="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 text-sm font-semibold" @click="triggerImport" aria-label="Importer des catégories depuis un fichier CSV">Import CSV</button>
+                  <button type="button" class="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 text-sm font-semibold" @click="openTypesModal" aria-label="Gérer les types d'arrêt">Types d'arrêt</button>
+                  <button type="button" class="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 text-sm font-semibold" @click="exportCategoriesCSV" aria-label="Exporter les catégories en CSV">Export CSV</button>
+                  <button type="button" class="px-4 py-2 rounded-xl bg-rose-100 text-rose-700 text-sm font-semibold" @click="resetCatalog" aria-label="Réinitialiser les catégories">Réinitialiser</button>
+                  <input type="file" class="hidden" accept="text/csv" x-ref="importInput" @change="onImportFileChange">
+                </div>
+              </div>
+              <div class="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
+                <section class="rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950/60 p-3 flex flex-col">
+                  <header class="flex items-center justify-between gap-2 mb-3">
+                    <h4 class="text-sm font-semibold">Catégories</h4>
+                    <span class="text-xs text-slate-500 dark:text-slate-400" x-text="totalCategoryCount() + ' éléments'"></span>
+                  </header>
+                  <div class="flex-1 space-y-2 overflow-y-auto pr-1">
+                    <template x-for="cat in pagedCategories()" :key="cat.id">
+                      <article class="rounded-xl border px-3 py-2 transition cursor-pointer" :class="isActive(cat.id)?'border-primary bg-primary/10 text-primary':'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/60'" @click="setActive(cat.id)" :data-category-name="cat.label || 'Sans nom'" x-init="renderTypeChooserForCard($el, cat.label || 'Sans nom')" x-effect="renderTypeChooserForCard($el, cat.label || 'Sans nom')">
+                        <div class="flex items-start justify-between gap-2">
+                          <div class="flex-1">
+                            <template x-if="editingCategoryId===cat.id">
+                              <input type="text" x-ref="categoryEditor" x-model="categoryDraft" class="w-full px-2 py-1 rounded-lg border border-primary focus:ring-2 focus:ring-primary" @keydown.enter.stop.prevent="commitCategoryEdit(cat)" @keydown.escape.stop.prevent="cancelCategoryEdit" @blur="commitCategoryEdit(cat)" placeholder="Nom de catégorie" aria-label="Nom de la catégorie">
+                            </template>
+                            <template x-if="editingCategoryId!==cat.id">
+                              <p class="font-semibold" x-text="cat.label || 'Sans nom'" @dblclick.stop="editCategory(cat)" aria-label="Nom de catégorie"></p>
+                            </template>
+                          </div>
+                          <span class="text-xs font-medium" x-text="cat.sub.length"></span>
+                        </div>
+                        <div class="flex items-center gap-2 mt-2">
+                          <button type="button" class="px-2 py-1 rounded-lg bg-slate-200 dark:bg-slate-800 text-xs" @click.stop="promptAddSub(cat.id)" aria-label="Ajouter une sous-catégorie">+ Sous-cat</button>
+                          <button type="button" class="px-2 py-1 rounded-lg bg-rose-100 text-rose-700 text-xs" @click.stop="deleteCategory(cat.id)" aria-label="Supprimer la catégorie">Supprimer</button>
+                        </div>
+                        <div class="mt-3" data-role="type-chooser">
+                          <div class="text-xs text-gray-400 mb-1">Types autorisés</div>
+                          <div class="flex flex-col gap-1" data-bind="types-list"></div>
+                          <div class="text-xs text-gray-400 mt-2">Type par défaut</div>
+                          <div class="flex flex-col gap-1" data-bind="default-list"></div>
+                          <div class="text-xs mt-1 text-gray-500" data-bind="hint"></div>
+                        </div>
+                      </article>
+                    </template>
+                    <template x-if="showPoolEntry">
+                      <article class="rounded-xl border px-3 py-2 transition cursor-pointer" :class="isActive('pool')?'border-primary bg-primary/10 text-primary':'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/60'" @click="setActive('pool')">
+                        <div class="flex items-start justify-between gap-2">
+                          <p class="font-semibold">Non assignées</p>
+                          <span class="text-xs font-medium" x-text="pool.length"></span>
+                        </div>
+                      </article>
+                    </template>
+                    <p class="text-sm text-slate-500 dark:text-slate-400" x-show="!pagedCategories().length && !showPoolEntry">Aucune catégorie trouvée.</p>
+                  </div>
+                  <footer class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mt-3">
+                    <button type="button" class="px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700" @click="prevCategoryPage" :disabled="catPage===0" aria-label="Page précédente">Précédent</button>
+                    <span x-text="(catPage+1)+' / '+Math.max(1,categoryPageCount())"></span>
+                    <button type="button" class="px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700" @click="nextCategoryPage" :disabled="catPage>=categoryPageCount()-1" aria-label="Page suivante">Suivant</button>
+                  </footer>
+                </section>
+                <section class="rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950/60 p-4 space-y-4">
+                  <template x-if="!activeCategory()">
+                    <p class="text-sm text-slate-500 dark:text-slate-400">Sélectionnez une catégorie pour gérer ses sous-catégories.</p>
+                  </template>
+                  <template x-if="activeCategory()">
+                    <div class="space-y-4">
+                      <header class="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <h4 class="text-base font-semibold" x-text="activeCategoryLabel()"></h4>
+                          <p class="text-xs text-slate-500 dark:text-slate-400" x-text="filteredSubList().length + ' sous-catégories'"></p>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-2">
+                          <button type="button" class="px-3 py-1 rounded-lg bg-slate-200 dark:bg-slate-800 text-xs" :disabled="!selectedSubIds.size" @click="openAssignModal" aria-label="Attribuer les sous-catégories sélectionnées">Attribuer à…</button>
+                          <button type="button" class="px-3 py-1 rounded-lg bg-rose-100 text-rose-700 text-xs" :disabled="!selectedSubIds.size" @click="deleteSubs(Array.from(selectedSubIds))" aria-label="Supprimer les sous-catégories sélectionnées">Supprimer</button>
+                        </div>
+                      </header>
+                      <form class="grid sm:grid-cols-[minmax(0,1fr)_120px_auto] gap-2 items-center" @submit.prevent="submitNewSub">
+                        <label class="sm:col-span-1">
+                          <span class="sr-only">Nom de la sous-catégorie</span>
+                          <input type="text" x-ref="newSubLabel" x-model="newSub.label" placeholder="Nom sous-catégorie" class="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900/60 focus:ring-2 focus:ring-primary" aria-label="Nom de la sous-catégorie">
+                        </label>
+                        <label>
+                          <span class="sr-only">Minutes par défaut</span>
+                          <input type="number" min="0" x-model="newSub.minutes" placeholder="Minutes" class="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900/60 focus:ring-2 focus:ring-primary" aria-label="Minutes par défaut">
+                        </label>
+                        <button type="submit" class="px-4 py-2 rounded-xl bg-primary text-white text-sm font-semibold" aria-label="Ajouter la sous-catégorie">Ajouter</button>
+                      </form>
+                      <div class="space-y-2 max-h-[28rem] overflow-y-auto pr-1">
+                        <template x-for="sub in filteredSubList()" :key="sub.id">
+                          <article class="rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-2 flex flex-col gap-2" :class="selectedSubIds.has(sub.id)?'bg-primary/10 border-primary':''">
+                            <div class="flex items-center gap-3">
+                              <input type="checkbox" class="rounded border-slate-300 dark:border-slate-600" :checked="selectedSubIds.has(sub.id)" @change="toggleSubSelection(sub.id)" :aria-label="`Sélectionner ${sub.label || 'sous-catégorie'}`">
+                              <div class="flex-1">
+                                <template x-if="editingSubId===sub.id">
+                                  <div class="flex flex-wrap items-center gap-2">
+                                    <input type="text" x-model="subDraft.label" class="flex-1 min-w-[160px] px-2 py-1 rounded-lg border border-primary focus:ring-2 focus:ring-primary" @keydown.enter.stop.prevent="commitSubEdit(sub)" @keydown.escape.stop.prevent="cancelSubEdit" @blur="commitSubEdit(sub)" placeholder="Nom" aria-label="Nom de la sous-catégorie">
+                                    <input type="number" min="0" x-model="subDraft.minutes" class="w-24 px-2 py-1 rounded-lg border border-primary focus:ring-2 focus:ring-primary" @keydown.enter.stop.prevent="commitSubEdit(sub)" aria-label="Minutes par défaut">
+                                  </div>
+                                </template>
+                                <template x-if="editingSubId!==sub.id">
+                                  <p class="text-sm font-medium" x-text="sub.label || 'Sans nom'"></p>
+                                </template>
+                              </div>
+              <div class="flex items-center gap-2 justify-end">
+                                <span class="text-xs px-2 py-1 rounded-lg bg-slate-200 dark:bg-slate-800" x-text="sub.defaultMinutes + ' min'"></span>
+                                <button type="button" class="px-2 py-1 rounded-lg bg-slate-200 dark:bg-slate-800 text-xs" @click="editSub(sub)" aria-label="Modifier la sous-catégorie">Modifier</button>
+                                <button type="button" class="px-2 py-1 rounded-lg bg-rose-100 text-rose-700 text-xs" @click="deleteSubs([sub.id])" aria-label="Supprimer la sous-catégorie">Supprimer</button>
+                              </div>
+                            </div>
+                          </article>
+                        </template>
+                        <p class="text-sm text-slate-500 dark:text-slate-400" x-show="!filteredSubList().length">Aucune sous-catégorie trouvée.</p>
+                      </div>
+                    </div>
+                  </template>
+                </section>
+              </div>
+            </div>
+            <div x-show="typeModal" x-transition.opacity class="fixed inset-0 z-40 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Gestion des types d'arrêt">
+              <div class="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 p-6 space-y-4 shadow-2xl">
+                <header class="space-y-1">
+                  <h4 class="font-semibold text-[clamp(1.05rem,0.65vw+0.7rem,1.3rem)]">Types d'arrêt</h4>
+                  <p class="text-sm text-slate-500 dark:text-slate-400">Ajoutez, renommez ou supprimez les familles de causes.</p>
+                </header>
+                <div class="space-y-2 max-h-60 overflow-y-auto pr-1">
+                  <template x-for="type in stopTypes" :key="`manage-type-${type}`">
+                    <div class="flex items-center gap-2">
+                      <input type="text" class="flex-1 px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900/60 focus:ring-2 focus:ring-primary text-sm" :value="type" @change="renameStopType(type,$event.target.value)" @blur="renameStopType(type,$event.target.value)" aria-label="Renommer le type d'arrêt">
+                      <button type="button" class="px-3 py-1 rounded-lg bg-rose-100 text-rose-700 text-xs" @click="removeStopType(type)" :disabled="stopTypes.length<=1" :class="stopTypes.length<=1?'opacity-50 cursor-not-allowed':''" aria-label="Supprimer ce type">Supprimer</button>
+                    </div>
+                  </template>
+                  <p class="text-sm text-slate-500 dark:text-slate-400" x-show="!stopTypes.length">Aucun type défini.</p>
+                </div>
+                <form class="flex flex-wrap items-center gap-2" @submit.prevent="addStopType">
+                  <label class="flex-1">
+                    <span class="sr-only">Nouveau type d'arrêt</span>
+                    <input type="text" x-model="typeDraft" placeholder="Nouveau type" class="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900/60 focus:ring-2 focus:ring-primary text-sm" aria-label="Nom du nouveau type d'arrêt">
+                  </label>
+                  <button type="submit" class="px-3 py-2 rounded-xl bg-primary text-white text-sm font-semibold" aria-label="Ajouter un type d'arrêt">Ajouter</button>
+                </form>
+                <div class="flex justify-end">
+                  <button type="button" class="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 text-sm font-semibold" @click="closeTypesModal" aria-label="Fermer la gestion des types">Fermer</button>
+                </div>
+              </div>
+            </div>
+            <div x-show="assignModal" x-transition.opacity class="fixed inset-0 z-40 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Attribuer les sous-catégories sélectionnées">
+              <div class="w-full max-w-sm rounded-2xl bg-white dark:bg-slate-900 p-6 space-y-4 shadow-2xl">
+                <header class="space-y-1">
+                  <h4 class="font-semibold text-[clamp(1.05rem,0.65vw+0.7rem,1.3rem)]">Attribuer les sous-catégories</h4>
+                  <p class="text-sm text-slate-500 dark:text-slate-400" x-text="selectedSubIds.size + ' éléments sélectionnés'"></p>
+                </header>
+                <label class="flex flex-col gap-1 text-sm">
+                  <span>Catégorie cible</span>
+                  <select x-model="assignTarget" class="px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950/60 focus:ring-2 focus:ring-primary" aria-label="Choisir la catégorie cible">
+                    <option value="" disabled>Choisir une catégorie</option>
+                    <option value="pool">Non assignées</option>
+                    <template x-for="cat in categories" :key="'assign-'+cat.id">
+                      <option :value="cat.id" x-text="cat.label || 'Sans nom'"></option>
+                    </template>
+                  </select>
+                </label>
+                <div class="flex justify-end gap-2">
+                  <button type="button" class="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-800" @click="closeAssignModal" aria-label="Annuler l'attribution">Annuler</button>
+                  <button type="button" class="px-4 py-2 rounded-xl bg-primary text-white" :disabled="!assignTarget" @click="confirmAssign" aria-label="Valider l'attribution">Valider</button>
+                </div>
+              </div>
+            </div>
+            <div x-show="importModal" x-transition.opacity class="fixed inset-0 z-40 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Import CSV catégories">
+              <div class="w-full max-w-2xl rounded-2xl bg-white dark:bg-slate-900 p-6 space-y-4 shadow-2xl">
+                <header class="space-y-1">
+                  <h4 class="font-semibold text-[clamp(1.05rem,0.65vw+0.7rem,1.3rem)]">Import CSV catégories</h4>
+                  <p class="text-sm text-slate-500 dark:text-slate-400" x-text="importFileName"></p>
+                </header>
+                <template x-if="importError">
+                  <p class="text-sm text-rose-500" x-text="importError"></p>
+                </template>
+                <template x-if="!importError">
+                  <div :class="ui.spacing('space-y-2','space-y-3','space-y-5')">
+                    <div>
+                      <h5 class="text-sm font-semibold">Aperçu (5 premières lignes)</h5>
+                      <ul class="text-sm text-slate-600 dark:text-slate-300 list-disc list-inside">
+                        <template x-for="row in importPreview" :key="row.index">
+                          <li x-text="row.display"></li>
+                        </template>
+                        <li x-show="!importPreview.length" class="list-none text-slate-500">Aucune ligne valide détectée.</li>
+                      </ul>
+                    </div>
+                    <p class="text-sm text-slate-500 dark:text-slate-400" x-text="'Lignes valides : ' + validLineCount + ' • Ignorées : ' + ignoredLineCount"></p>
+                    <template x-if="importReport">
+                      <p class="text-sm text-emerald-500" x-text="importReport"></p>
+                    </template>
+                  </div>
+                </template>
+                <div class="flex justify-end gap-2">
+                  <button type="button" class="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-800" @click="closeImportModal" aria-label="Annuler l'import">Annuler</button>
+                  <button type="button" class="px-4 py-2 rounded-xl bg-primary text-white" :disabled="!canApplyImport" @click="applyImport" aria-label="Confirmer l'import">Importer</button>
+                </div>
+              </div>
             </div>
           </div>
-
-          <!-- Résultat test -->
-          <div class="rounded-2xl border border-slate-200 dark:border-slate-800 px-4 py-3">
-            <p class="text-xs uppercase tracking-wide text-slate-500">Champs requis</p>
-            <p class="text-sm font-semibold" x-text="testResult.requires?.length ? testResult.requires.join(', ') : '—'"></p>
-            <p class="text-xs uppercase tracking-wide text-slate-500 mt-2">Defaults appliqués</p>
-            <pre class="text-xs whitespace-pre-wrap" x-text="JSON.stringify(testResult.defaults||{}, null, 2)"></pre>
-          </div>
         </div>
-        <!-- REMOVED: categories & sous-categories manager -->
-        <!-- REMOVED: events v1 configuration editor -->
-        <div class="mt-6 flex justify-end">
-          <button type="button" class="px-4 py-2 rounded-2xl bg-primary text-white font-semibold" @click="publishSettings()">Publier</button>
-        </div>
-      </div>
+        <footer class="flex flex-wrap gap-3 mt-6">
+          <button type="button" class="px-4 py-2 rounded-xl bg-primary text-white whitespace-nowrap min-w-[160px]" @click="exportSettings">Export paramètres</button>
+          <button type="button" class="px-4 py-2 rounded-xl bg-secondary text-slate-900 whitespace-nowrap min-w-[160px]" @click="importSettings">Import paramètres</button>
+          <button type="button" class="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 whitespace-nowrap min-w-[160px]" @click="scheduleBackup">Backup quotidien</button>
+        </footer>
+      </article>
+    </div>
     </section>
   </main>
 </div>
@@ -1258,9 +1551,6 @@ Puis ouvrir http://localhost:8000/
     const KEY_CATS='pp_categories';
     const KEY_SUBPOOL='pp_subpool';
     const KEY_STOP_TYPES='pp_stop_types';
-    const SETTINGS_MASTER_KEY='pilotage-v3-settings';
-    const SETTINGS_RULES_KEY='pp:params:rules';
-    const SETTINGS_REFS_KEY='pp:params:refs';
     // PATCH storage: nouvelles clés persistées
     const KEY_SHIFTS='pp:shifts';
     const KEY_BRAND='pp:brand';
@@ -1292,383 +1582,6 @@ Puis ouvrir http://localhost:8000/
         "Divers":["Autre cause"]
       }
     };
-    const SETTINGS_DEFAULT={
-      lineName:'',
-      saveTarget:'local',
-      savePath:'',
-      filePattern:'{LIGNE}_{DATE}',
-      oeeProfiles:[],
-      shifts:[],
-      stopTypes:[],
-      categories:[],
-      pool:[],
-      rules:{rules:[]},
-      brand:{name:'ProdTrack',logoDataUrl:null},
-      autosave:false,
-      autoReset:false,
-      resetConfirm:true
-    };
-
-    function deepClone(value){
-      try{return JSON.parse(JSON.stringify(value));}catch{return value;}
-    }
-
-    function normalizeStopTypesList(list){
-      const seen=new Set();
-      const result=[];
-      (Array.isArray(list)?list:[]).forEach(raw=>{
-        const label=typeof raw==='string'?raw:String(raw||'');
-        const trimmed=label.trim();
-        if(!trimmed){return;}
-        const key=trimmed.toLowerCase();
-        if(seen.has(key)) return;
-        seen.add(key);
-        result.push(trimmed);
-      });
-      if(!result.length){
-        Object.keys(DEFAULT_STOP_SCHEMA||{}).forEach(type=>{
-          const trimmed=String(type||'').trim();
-          if(trimmed){
-            const key=trimmed.toLowerCase();
-            if(!seen.has(key)){seen.add(key);result.push(trimmed);} }
-        });
-      }
-      if(!result.length){result.push('Autres');}
-      return result;
-    }
-
-    function normalizeSubList(list){
-      const output=[];
-      (Array.isArray(list)?list:[]).forEach((entry)=>{
-        const label=typeof entry==='string'?entry:String(entry?.label||entry?.name||'');
-        const trimmed=label.trim();
-        if(!trimmed) return;
-        const minutesRaw=entry?.defaultMinutes ?? entry?.defaultMin ?? 0;
-        const defaultMinutes=Math.max(0,Math.round(Number(minutesRaw)||0));
-        output.push({
-          id:entry?.id||crypto.randomUUID(),
-          label:trimmed,
-          defaultMinutes
-        });
-      });
-      return output;
-    }
-
-    function normalizeCategoryList(list){
-      const result=[];
-      (Array.isArray(list)?list:[]).forEach((entry,index)=>{
-        const label=typeof entry==='string'?entry:String(entry?.label||entry?.name||'');
-        const trimmed=label.trim();
-        if(!trimmed) return;
-        const typeRaw=String(entry?.type||entry?.stopType||'').trim();
-        const sub=normalizeSubList(entry?.sub||entry?.subs||[]);
-        result.push({
-          id:entry?.id||crypto.randomUUID(),
-          label:trimmed,
-          type:typeRaw||'Autres',
-          order:Number.isFinite(Number(entry?.order))?Number(entry.order):index,
-          sub
-        });
-      });
-      return result.sort((a,b)=>Number(a.order||0)-Number(b.order||0));
-    }
-
-    function normalizePool(list){
-      const result=[];
-      (Array.isArray(list)?list:[]).forEach(entry=>{
-        const label=typeof entry==='string'?entry:String(entry?.label||entry?.name||'');
-        const trimmed=label.trim();
-        if(!trimmed) return;
-        const minutesRaw=entry?.defaultMinutes ?? entry?.defaultMin ?? 0;
-        result.push({
-          id:entry?.id||crypto.randomUUID(),
-          label:trimmed,
-          defaultMinutes=Math.max(0,Math.round(Number(minutesRaw)||0))
-        });
-      });
-      return result;
-    }
-
-    function normalizeOeeProfiles(list){
-      const result=[];
-      (Array.isArray(list)?list:[]).forEach((entry,index)=>{
-        if(!entry||typeof entry!=='object') return;
-        const name=String(entry.name||'').trim();
-        if(!name) return;
-        result.push({
-          id:entry.id||crypto.randomUUID(),
-          name,
-          targetRate:Number(entry.targetRate||0),
-          qualityTarget:Number(entry.qualityTarget||0),
-          availabilityTarget:Number(entry.availabilityTarget||0),
-          oeeTarget:Number(entry.oeeTarget||0),
-          order:Number.isFinite(Number(entry.order))?Number(entry.order):index
-        });
-      });
-      return result.sort((a,b)=>Number(a.order||0)-Number(b.order||0));
-    }
-
-    function normalizeShifts(list){
-      const result=[];
-      (Array.isArray(list)?list:[]).forEach((entry,index)=>{
-        if(!entry||typeof entry!=='object') return;
-        const label=String(entry.label||entry.name||entry.id||'').trim();
-        if(!label) return;
-        result.push({
-          id:entry.id||crypto.randomUUID(),
-          label,
-          order:Number.isFinite(Number(entry.order))?Number(entry.order):index
-        });
-      });
-      return result.sort((a,b)=>Number(a.order||0)-Number(b.order||0));
-    }
-
-    function normalizeRulesBag(bag){
-      const base={rules:[]};
-      if(!bag||typeof bag!=='object') return base;
-      const items=Array.isArray(bag.rules)?bag.rules:[];
-      base.rules=items.map(entry=>{
-        const when=entry?.when && typeof entry.when==='object'?entry.when:{};
-        const requires=Array.isArray(entry?.requires)?entry.requires.map(v=>String(v||'').trim()).filter(Boolean):[];
-        const defaults=entry?.defaults && typeof entry.defaults==='object'?entry.defaults:{};
-        return {when,requires,defaults};
-      });
-      return base;
-    }
-
-    function normalizeBrand(payload){
-      if(!payload||typeof payload!=='object'){
-        return deepClone(SETTINGS_DEFAULT.brand);
-      }
-      return {
-        name:String(payload.name||'').trim()||'ProdTrack',
-        logoDataUrl:payload.logoDataUrl||null
-      };
-    }
-
-    function normalizeSettings(payload){
-      const source=payload&&typeof payload==='object'?payload:{};
-      const base=deepClone(SETTINGS_DEFAULT);
-      base.lineName=String(source.lineName||'').trim();
-      base.saveTarget=String(source.saveTarget||'local').trim()||'local';
-      base.savePath=String(source.savePath||'').trim();
-      base.filePattern=String(source.filePattern||'{LIGNE}_{DATE}').trim()||'{LIGNE}_{DATE}';
-      base.oeeProfiles=normalizeOeeProfiles(source.oeeProfiles);
-      base.shifts=normalizeShifts(source.shifts);
-      base.stopTypes=normalizeStopTypesList(source.stopTypes);
-      base.categories=normalizeCategoryList(source.categories);
-      base.pool=normalizePool(source.pool);
-      base.rules=normalizeRulesBag(source.rules);
-      base.brand=normalizeBrand(source.brand);
-      base.autosave=Boolean(source.autosave);
-      base.autoReset=Boolean(source.autoReset);
-      base.resetConfirm=source.resetConfirm!==false;
-      return base;
-    }
-
-    function readStoredSettings(){
-      try{
-        const raw=localStorage.getItem(SETTINGS_MASTER_KEY);
-        if(!raw) return null;
-        const parsed=JSON.parse(raw);
-        return normalizeSettings(parsed);
-      }catch(err){
-        console.warn('settingsStore read error',err);
-        return null;
-      }
-    }
-
-    function migrateLegacySettings(){
-      const legacyState=safeGet(STORAGE_KEY,demoState)||{};
-      const legacySettings=legacyState.settings||{};
-      const storageSettings=legacyState.storage||{};
-      const payload={
-        lineName:legacySettings.lineName||'',
-        saveTarget:legacySettings.saveTarget||'local',
-        savePath:legacySettings.savePath||'',
-        filePattern:storageSettings.filePattern||legacySettings.filePattern||'{LIGNE}_{DATE}',
-        oeeProfiles:Array.isArray(legacySettings.oeeProfiles)?legacySettings.oeeProfiles:[],
-        shifts:safeGet(KEY_SHIFTS,legacySettings.shifts||[]),
-        stopTypes:safeGet(KEY_STOP_TYPES,legacySettings.stopTypes||[]),
-        categories:safeGet(KEY_CATS,legacySettings.categories||[]),
-        pool:safeGet(KEY_SUBPOOL,legacySettings.pool||[]),
-        brand:safeGet(KEY_BRAND,legacySettings.brand||null),
-        autosave:storageSettings.autosave||false,
-        autoReset:storageSettings.autoReset||false,
-        resetConfirm:storageSettings.resetConfirm!==false
-      };
-      let rulesSnapshot={rules:[]};
-      try{
-        rulesSnapshot=JSON.parse(localStorage.getItem(SETTINGS_RULES_KEY)||'{"rules":[]}');
-      }catch{rulesSnapshot={rules:[]};}
-      payload.rules=rulesSnapshot;
-      const normalized=normalizeSettings(payload);
-      try{localStorage.setItem(SETTINGS_MASTER_KEY,JSON.stringify(normalized));}catch(err){console.warn('settingsStore migrate persist',err);}
-      return normalized;
-    }
-
-    const settingsStore=(()=>{
-      let current=readStoredSettings();
-      if(!current){
-        current=migrateLegacySettings();
-      }
-      if(!current){
-        current=normalizeSettings({});
-        try{localStorage.setItem(SETTINGS_MASTER_KEY,JSON.stringify(current));}catch(err){console.warn('settingsStore init persist',err);}
-      }
-      const listeners=new Set();
-
-      function snapshot(){
-        return deepClone(current);
-      }
-
-      function notify(reason){
-        const snap=snapshot();
-        listeners.forEach(cb=>{try{cb(snap,reason);}catch(err){console.warn('settingsStore listener',err);}});
-        window.__stopSchema=buildStopSchema();
-        window.dispatchEvent(new CustomEvent('settings:updated',{detail:{settings:snap,reason}}));
-      }
-
-      function applyPatch(patch){
-        if(!patch||typeof patch!=='object') return;
-        const merged={...current,...deepClone(patch)};
-        current=normalizeSettings(merged);
-      }
-
-      return {
-        get(){
-          return snapshot();
-        },
-        set(patch){
-          applyPatch(patch);
-          notify('set');
-        },
-        replace(payload){
-          current=normalizeSettings(payload);
-          notify('replace');
-        },
-        persist(){
-          try{
-            localStorage.setItem(SETTINGS_MASTER_KEY,JSON.stringify(current));
-            safeSet(KEY_CATS,current.categories);
-            safeSet(KEY_SUBPOOL,current.pool);
-            safeSet(KEY_STOP_TYPES,current.stopTypes);
-            safeSet(KEY_SHIFTS,current.shifts);
-            safeSet(KEY_BRAND,current.brand);
-            localStorage.setItem(SETTINGS_RULES_KEY,JSON.stringify(current.rules||{rules:[]}));
-          }catch(err){
-            console.warn('settingsStore persist error',err);
-          }
-          notify('persist');
-        },
-        onUpdate(cb){
-          if(typeof cb!=='function') return () => {};
-          listeners.add(cb);
-          return ()=>listeners.delete(cb);
-        }
-      };
-    })();
-
-    window.settingsStore=settingsStore;
-
-    function buildStopSchema(){
-      const snapshot=settingsStore.get();
-      const schema={};
-      (snapshot.stopTypes||[]).forEach(type=>{
-        const label=String(type||'').trim();
-        if(!label) return;
-        if(!schema[label]) schema[label]={};
-      });
-      (snapshot.categories||[]).forEach(cat=>{
-        const typeLabel=String(cat?.type||'Autres').trim()||'Autres';
-        const catLabel=String(cat?.label||'').trim();
-        if(!catLabel) return;
-        if(!schema[typeLabel]) schema[typeLabel]={};
-        schema[typeLabel][catLabel]=(cat?.sub||[]).map(sub=>String(sub?.label||'').trim()).filter(Boolean);
-      });
-      return schema;
-    }
-
-    function applyRules(sel){
-      const payload=sel&&typeof sel==='object'?sel:{};
-      const rules=(settingsStore.get().rules?.rules)||[];
-      const hit=rules.find(rule=>{
-        const when=rule?.when||{};
-        if(when.type && when.type!==payload.type) return false;
-        if(when.category && when.category!==payload.category) return false;
-        if(when.cause && when.cause!==payload.cause) return false;
-        if(Array.isArray(when.categorie_in) && when.categorie_in.length){
-          if(!when.categorie_in.includes(payload.category)) return false;
-        }
-        if(when.categorie && when.categorie!==payload.category) return false;
-        if(when.cause_5m && when.cause_5m!==payload.cause_5m) return false;
-        if(when.detail_code && when.detail_code!==payload.detail_code) return false;
-        return true;
-      });
-      if(!hit){
-        return {requires:[],defaults:{}};
-      }
-      const requires=Array.isArray(hit.requires)?hit.requires.slice().filter(Boolean):[];
-      const defaults=hit.defaults&&typeof hit.defaults==='object'?hit.defaults:{};
-      return {requires,defaults};
-    }
-
-    window.__stopSchema=buildStopSchema();
-
-    function syncAppFromSettings(snapshot){
-      const appHost=document.querySelector('[x-data="appState"]');
-      const app=appHost&&appHost.__x?appHost.__x.$data:null;
-      if(!app) return;
-      const data=snapshot||settingsStore.get();
-      if(app.settings){
-        app.settings.lineName=data.lineName;
-        app.settings.saveTarget=data.saveTarget;
-        app.settings.savePath=data.savePath;
-        app.settings.stopTypes=Array.isArray(data.stopTypes)?data.stopTypes.slice():[];
-        app.settings.categories=deepClone(data.categories);
-        app.settings.oeeProfiles=deepClone(data.oeeProfiles);
-        app.settings.shifts=deepClone(data.shifts);
-        app.settings.stopSchema=buildStopSchema();
-      }
-      if(app.state && app.state.settings){
-        app.state.settings.lineName=data.lineName;
-        app.state.settings.saveTarget=data.saveTarget;
-        app.state.settings.savePath=data.savePath;
-        app.state.settings.stopTypes=Array.isArray(data.stopTypes)?data.stopTypes.slice():[];
-        app.state.settings.categories=deepClone(data.categories);
-        app.state.settings.oeeProfiles=deepClone(data.oeeProfiles);
-        app.state.settings.shifts=deepClone(data.shifts);
-        app.state.settings.stopSchema=buildStopSchema();
-      }
-      if(app.storage){
-        app.storage.autosave=Boolean(data.autosave);
-        app.storage.autoReset=Boolean(data.autoReset);
-        app.storage.resetConfirm=data.resetConfirm!==false;
-        if(typeof data.filePattern==='string'&&data.filePattern){
-          app.storage.filePattern=data.filePattern;
-        }
-      }
-      app.stopTypes=Array.isArray(data.stopTypes)?data.stopTypes.slice():[];
-      window.dispatchEvent(new CustomEvent('cats:updated',{detail:{categories:data.categories,pool:data.pool,types:data.stopTypes}}));
-    }
-
-    syncAppFromSettings(settingsStore.get());
-
-    window.addEventListener('settings:updated',event=>{
-      const snapshot=event?.detail?.settings || settingsStore.get();
-      window.__stopSchema=buildStopSchema();
-      syncAppFromSettings(snapshot);
-      settingsStoreWriteForm(settingsStoreSnapshotToForm(snapshot));
-    });
-
-    window.addEventListener('prodtrack:params-changed',event=>{
-      if(event?.detail?.stopSchema){
-        window.__stopSchema=event.detail.stopSchema;
-      }else{
-        window.__stopSchema=buildStopSchema();
-      }
-      syncAppFromSettings(settingsStore.get());
-    });
     async function openHandleDB(){
       if(typeof window==='undefined'||!window.indexedDB) return null;
       return new Promise(resolve=>{
@@ -1799,7 +1712,6 @@ Puis ouvrir http://localhost:8000/
           document.documentElement.classList.toggle('dark',this.theme==='dark');
           window.addEventListener('online',()=>{this.isOnline=true;});
           window.addEventListener('offline',()=>{this.isOnline=false;});
-          if(EVENTS_ENABLED && window.EventsV2?.init){ window.EventsV2.init(); }
           this.registerSW();
         },
         toggleTheme(){this.theme=this.theme==='dark'?'light':'dark';document.documentElement.classList.toggle('dark',this.theme==='dark');safeSet('pilotage-theme',this.theme);},
@@ -1898,55 +1810,25 @@ Puis ouvrir http://localhost:8000/
           this.loadFromHour();
         },
         refreshCatalog(){
-          const snapshot=settingsStore.get();
-          const schema=window.__stopSchema || buildStopSchema();
-          const catsSource=Array.isArray(snapshot.categories)?snapshot.categories:[];
-          const catIndex=new Map();
-          catsSource.forEach(cat=>{
+          const stored = safeGet(KEY_CATS, []);
+          this.cats = Array.isArray(stored) ? stored.map(cat=>{
             const id=cat?.id || crypto.randomUUID();
-            catIndex.set((cat?.label||'').trim().toLowerCase(),{
-              id,
-              name:cat?.label || '',
-              type:cat?.type || this.ensureStopType(cat?.type||this.inferTypeFromSchema(cat?.label)),
-              subs:Array.isArray(cat?.sub)?cat.sub.map(sub=>({
-                id:sub?.id || crypto.randomUUID(),
-                name:sub?.label || '',
-                defaultMin:Number.isFinite(Number(sub?.defaultMinutes))?Number(sub?.defaultMinutes):0,
-                catId:id
-              })) : []
-            });
-          });
-          const result=[];
-          Object.keys(schema||{}).forEach(typeLabel=>{
-            const catsForType=schema[typeLabel]||{};
-            Object.keys(catsForType).forEach(label=>{
-              const key=label.trim().toLowerCase();
-              let entry=catIndex.get(key);
-              if(!entry){
-                const id=crypto.randomUUID();
-                entry={
-                  id,
-                  name:label,
-                  type:typeLabel,
-                  subs:(catsForType[label]||[]).map(subLabel=>({
-                    id:`${id}-${subLabel}`,
-                    name:subLabel,
-                    defaultMin:0,
-                    catId:id
-                  }))
-                };
-              }
-              result.push(entry);
-            });
-          });
-          this.cats=result.length?result:Array.from(catIndex.values());
+            const name=cat?.name || cat?.label || '';
+            const subsSource = Array.isArray(cat?.subs)?cat.subs:Array.isArray(cat?.sub)?cat.sub:[];
+            const subs=subsSource.map(sub=>({
+              id:sub?.id || crypto.randomUUID(),
+              name:sub?.name || sub?.label || '',
+              defaultMin:Number.isFinite(Number(sub?.defaultMin ?? sub?.defaultMinutes))?Number(sub?.defaultMin ?? sub?.defaultMinutes):5,
+              catId:id
+            }));
+            return {id,name,subs};
+          }):[];
           if(!this.cats.length){
             const fallbackCats = typeof this.config.getCategories==='function' ? this.config.getCategories() || [] : [];
             const fallbackSubs = typeof this.config.getFallbackSubs==='function' ? this.config.getFallbackSubs() || [] : [];
             this.cats = fallbackCats.map(entry=>{
               const label=typeof entry==='string'?entry:String(entry?.label||entry?.name||'');
               const id=entry?.id || label || crypto.randomUUID();
-              const type=entry?.type || this.ensureStopType(entry?.type||this.inferTypeFromSchema(label));
               const subsSource=Array.isArray(entry?.sub)?entry.sub:Array.isArray(entry?.subs)?entry.subs:fallbackSubs;
               const subs=subsSource.map(sub=>{
                 const subLabel=typeof sub==='string'?sub:String(sub?.label||sub?.name||'');
@@ -1957,7 +1839,7 @@ Puis ouvrir http://localhost:8000/
                   catId:id
                 };
               });
-              return {id,name:label,subs,type};
+              return {id,name:label,subs};
             });
           }
         },
@@ -2032,8 +1914,6 @@ Puis ouvrir http://localhost:8000/
             }
           }
           const min = this.normalizeMinutes(c.min ?? c.minutes ?? 0);
-          const ruleRequires=Array.isArray(c.ruleRequires)?c.ruleRequires.slice():[];
-          const ruleDefaults=c.ruleDefaults&&typeof c.ruleDefaults==='object'?c.ruleDefaults:{};
           return {
             id: c.id || c.uid || `cause-${index}-${crypto.randomUUID()}`,
             categoryId: cat ? cat.id : (catId || null),
@@ -2041,9 +1921,7 @@ Puis ouvrir http://localhost:8000/
             subId: subId || null,
             sub: subName || '',
             min,
-            color: this.colorFor(category),
-            ruleRequires,
-            ruleDefaults
+            color: this.colorFor(category)
           };
         },
         persistKey(){
@@ -2103,33 +1981,8 @@ Puis ouvrir http://localhost:8000/
           }
           const cat=this.cats.find(entry=>entry.id===this.quick.categoryId);
           const sub=this.subEntry(this.quick.categoryId,this.quick.subId);
-          const deltaNow=this.currentDelta ?? (this.target - this.total);
-          if(deltaNow!==0){
-            if(!cat||!cat.type){
-              pushToast('Causes','Type ou catégorie manquant','danger');
-              return;
-            }
-            if(!sub){
-              pushToast('Causes','Sélectionner une cause','danger');
-              return;
-            }
-          }
-          const selection={
-            type:cat?.type||'',
-            category:cat?.name||'',
-            cause:sub?.name||''
-          };
-          const ruleResult=applyRules(selection);
-          if((!Number.isFinite(Number(this.quick.min))||Number(this.quick.min)<=0) && Number.isFinite(Number(ruleResult?.defaults?.minutes))){
-            this.quick.min=Number(ruleResult.defaults.minutes);
-          }
-          const normalizedMin=this.normalizeMinutes(this.quick.min);
-          if(normalizedMin<0){
-            pushToast('Causes','Minutes invalides','danger');
-            return;
-          }
           const available=this.remainingBudget();
-          const chosen=this.capQuickMin(normalizedMin);
+          const chosen=this.capQuickMin(this.normalizeMinutes(this.quick.min));
           const effective=available>0?Math.min(chosen,available):chosen;
           const payload={
             id: crypto.randomUUID(),
@@ -2137,12 +1990,11 @@ Puis ouvrir http://localhost:8000/
             category: cat?cat.name:'',
             subId: sub?sub.id:null,
             sub: sub?sub.name:'',
-            min: effective,
-            ruleRequires:Array.isArray(ruleResult?.requires)?ruleResult.requires.slice():[],
-            ruleDefaults:ruleResult?.defaults||{}
+            min: effective
           };
           this.items.push(this.normalize(payload, this.items.length));
           this.quick.subId='';
+          const deltaNow=this.currentDelta ?? (this.target - this.total);
           const remainAfter=Math.max(0,(deltaNow||0)-effective);
           if(remainAfter>0){
             this.quick.min=this.normalizeMinutes(Math.min(remainAfter,effective||remainAfter));
@@ -3351,9 +3203,8 @@ const demoState = {
         // PATCH UX: état initial enrichi avec le schéma des arrêts et le brouillon de cause
         settings:{categories:[],daySchedule:[],oeeProfiles:[],shifts:[],stopSchema:JSON.parse(JSON.stringify(DEFAULT_STOP_SCHEMA)),stopTypes:['Technique','Organisation','Qualité','Utilités','Autres'],lineName:'',saveTarget:'local',savePath:''},
         stopTypes:[],
-        // REMOVED: events v1 cause draft
-        resetCauseDraft(){ /* REMOVED: events v1 */ },
-        // REMOVED: events v1 state
+        causeDraft:{type:'',cat:'',sub:'',minutes:5,cause5m:'',detail_code:'',detail_label:'',equipement:'',sous_ensemble:'',article:'',lot:'',type_defaut:'',raison_cadence:'',zone:'',utilite:''},
+        evt_eventCounterToday:0,
         teamPool:[],
         teamBoards:[],
         dragged:null,
@@ -3482,6 +3333,10 @@ const demoState = {
           this.ensureFullDay();
           // PATCH UI: propagation de l'état "closed" vers les vues
           this.hours=this.state.heures.map(h=>({...h,closed:Boolean(h.closed),delta:this.computeDelta(h)}));
+          this.evt_eventCounterToday=this.state.heures.reduce((sum,h)=>{
+            const causes=Array.isArray(h.causes)?h.causes:[];
+            return sum+causes.length;
+          },0);
           const firstOpen=this.state.heures.find(h=>originalFirst && h.hh===originalFirst.hh) || this.state.heures[0];
           // PATCH UI: synchronisation du statut fermé sur l'heure courante
           this.currentHour={...firstOpen,causes:this.normalizeCauses(firstOpen?.causes||[]),comment:firstOpen?.comment||'',closed:Boolean(firstOpen?.closed)};
@@ -3525,7 +3380,6 @@ const demoState = {
           window.addEventListener('causes:total',()=>{this.recalcCurrent();});
           updateNewDayButton();
           if(!safeGet(GUIDE_KEY,false)){setTimeout(()=>{this.guideOpen=true;safeSet(GUIDE_KEY,true);},500);}
-          // REMOVED: events v1 watchers
           this.persist();
         },
         openGuide(){this.guideOpen=true;},
@@ -3576,16 +3430,6 @@ const demoState = {
             return current;
           });
           this.persist();
-        },
-        publishSettings(){
-          try{
-            settingsStore.persist();
-          }catch(err){console.warn('publish persist',err);}
-          const snapshot=settingsStore.get();
-          const schema=buildStopSchema();
-          window.__stopSchema=schema;
-          window.dispatchEvent(new CustomEvent('prodtrack:params-changed',{detail:{stopSchema:schema,rules:snapshot.rules||{rules:[]}}}));
-          pushToast('Paramètres','Configuration publiée','success');
         },
         selectHourByTime(value){
           const hh=String(value||'').slice(0,5);
@@ -3908,6 +3752,7 @@ const demoState = {
           const first=this.state.heures[0]||{hh:'00:00',team:'',causes:[],comment:'',closed:false};
           // PATCH UI: l'heure affichée revient à un état ouvert
           this.currentHour={...first,causes:this.normalizeCauses(first.causes||[]),comment:first.comment||'',closed:false};
+          this.evt_eventCounterToday=0;
           if(!this.state.meta){this.state.meta={};}
           this.state.meta.partial=true;
           this.partialData=true;
@@ -4299,9 +4144,8 @@ const demoState = {
           this.recalcCurrent();
         },
         computeDelta(h){
-          // REMOVED: events v1 delta (always 0 while module disabled)
+          // PATCH UI: delta nul lorsque la ligne est fermée
           if(Boolean(h.closed)) return 0;
-          if(typeof EVENTS_ENABLED!=='undefined' && EVENTS_ENABLED===false) return 0;
           const rate=this.getTargetRate(h.hh);
           const producedRaw=rate>0?Math.min(60,(Number(h.good||0)/rate)*60):0;
           const toJustify=Math.max(0,Math.round(60-producedRaw));
@@ -4314,9 +4158,8 @@ const demoState = {
             const sub=(cause.sub||cause.subCategory||'').trim();
             const typeRaw=(cause.type||cause.stopType||'').trim();
             const type=typeRaw||this.inferStopType(cat,sub);
-            const cause5m=cause.cause_5m || cause.cause5m || '';
-            const detailCode=cause.detail_code || cause.detailCode || cause.detail || '';
-            const detailLabel=cause.detail_label || cause.detailLabel || '';
+            const detailCode=(cause.detail_code||cause.detailCode||cause.detail||'').trim();
+            const detailLabel=(cause.detail_label||cause.detailLabel||'').trim();
             return {
               uid: cause.uid || cause.id || `cause-${idx}-${crypto.randomUUID()}`,
               // PATCH UX: stockage complet Type → Catégorie → Sous-catégorie
@@ -4325,24 +4168,22 @@ const demoState = {
               catId: cause.catId || cause.categoryId || null,
               sub,
               subId: cause.subId || null,
-              minutes: Math.max(0,Number(cause.minutes ?? cause.min ?? 0)),
+              minutes: Math.max(0,Number(cause.minutes ?? cause.min ?? cause.duree_min ?? 0)),
               comment: typeof cause.comment==='string'?cause.comment:'',
-              cause_5m:cause5m,
-              cause5m,
-              detail_code:detailCode,
-              detail_label:detailLabel,
-              detail:detailLabel,
-              equipement:cause.equipement || cause.equipment || '',
-              sous_ensemble:cause.sous_ensemble || cause.sousEnsemble || '',
-              article:cause.article || '',
-              lot:cause.lot || '',
-              type_defaut:cause.type_defaut || cause.typeDefaut || '',
-              raison_cadence:cause.raison_cadence || cause.raisonCadence || '',
-              zone:cause.zone || '',
-              utilite:cause.utilite || cause.utility || '',
-              event_code:cause.event_code || cause.eventCode || '',
-              duree_min:Number(cause.duree_min ?? cause.minutes ?? cause.min ?? 0),
-              impact_qty:Number(cause.impact_qty ?? cause.impactQty ?? 0)
+              cause_5m: (cause.cause_5m||cause.cause5m||'').trim(),
+              detail_code: detailCode,
+              detail_label: detailLabel,
+              equipement: (cause.equipement||cause.equipment||'').trim(),
+              sous_ensemble: (cause.sous_ensemble||cause.sousEnsemble||'').trim(),
+              article: (cause.article||'').trim(),
+              lot: (cause.lot||'').trim(),
+              type_defaut: (cause.type_defaut||cause.typeDefaut||'').trim(),
+              raison_cadence: (cause.raison_cadence||cause.raisonCadence||'').trim(),
+              zone: (cause.zone||'').trim(),
+              utilite: (cause.utilite||cause.utility||'').trim(),
+              duree_min: Number(cause.duree_min ?? cause.minutes ?? cause.min ?? 0),
+              impact_qty: Number(cause.impact_qty ?? cause.impactQty ?? 0),
+              event_code: (cause.event_code||cause.eventCode||'').trim()
             };
           });
         },
@@ -5149,7 +4990,109 @@ const demoState = {
             this.saveDayBundle({silent:true,skipDialog:true});
           }
         },
-
+        // PATCH UX: remise à zéro du brouillon de cause
+        resetCauseDraft(preserveType=false){
+          const keepType=preserveType?this.causeDraft.type:'';
+          this.causeDraft={
+            type:keepType,
+            cat:'',
+            sub:'',
+            minutes:5,
+            cause5m:'',
+            detail_code:'',
+            detail_label:'',
+            equipement:'',
+            sous_ensemble:'',
+            article:'',
+            lot:'',
+            type_defaut:'',
+            raison_cadence:'',
+            zone:'',
+            utilite:''
+          };
+          const causeSelect=document.getElementById('cause5m');
+          if(causeSelect) causeSelect.value='';
+          const detailSelect=document.getElementById('detail');
+          if(detailSelect) detailSelect.value='';
+          if(typeof evt_updateDynamicFields==='function'){
+            Promise.resolve().then(()=>{
+              const state={
+                type:this.causeDraft.type||'',
+                categorie:this.causeDraft.cat||'',
+                cause_5m:this.causeDraft.cause5m||this.causeDraft.cause_5m||'',
+                detail_code:this.causeDraft.detail_code||'',
+                equipement:this.causeDraft.equipement||'',
+                sous_ensemble:this.causeDraft.sous_ensemble||'',
+                article:this.causeDraft.article||'',
+                lot:this.causeDraft.lot||'',
+                type_defaut:this.causeDraft.type_defaut||'',
+                raison_cadence:this.causeDraft.raison_cadence||'',
+                zone:this.causeDraft.zone||'',
+                utilite:this.causeDraft.utilite||''
+              };
+              evt_updateDynamicFields(state);
+            });
+          }
+        },
+        // PATCH UX: total des minutes de causes pour l'heure courante
+        currentCauseMinutes(){
+          return this.currentHour.causes.reduce((sum,c)=>sum+Number(c.minutes||0),0);
+        },
+        // PATCH UX: ajout d'une cause via le modèle hiérarchique
+        addCause(){
+          if(this.currentHour.closed){
+            pushToast('Causes','Impossible d’ajouter sur une heure fermée','info');
+            return;
+          }
+          const type=(this.causeDraft.type||'').trim();
+          const cat=(this.causeDraft.cat||'').trim();
+          const sub=(this.causeDraft.sub||'').trim();
+          const cause5m=(this.causeDraft.cause5m||'').trim();
+          const detailCode=(this.causeDraft.detail_code||'').trim();
+          const detailSelect=document.getElementById('detail');
+          const detailLabel=detailSelect?.selectedOptions?.[0]?.textContent?.trim()||'';
+          if(!type||!cat||!sub){
+            pushToast('Causes','Sélectionner type, catégorie et sous-catégorie','danger');
+            return;
+          }
+          const requested=Math.max(0,Number(this.causeDraft.minutes||0));
+          if(!requested){
+            pushToast('Causes','Minutes obligatoires','danger');
+            return;
+          }
+          const available=Math.max(0,this.currentHourMetrics.toJustify - this.currentCauseMinutes());
+          const minutes=available>0?Math.min(requested,available):requested;
+          const payload={
+            uid:crypto.randomUUID(),
+            type,
+            cat,
+            sub,
+            minutes,
+            comment:'',
+            cause_5m:cause5m,
+            detail_code:detailCode,
+            detail_label:detailLabel,
+            equipement:(this.causeDraft.equipement||'').trim(),
+            sous_ensemble:(this.causeDraft.sous_ensemble||'').trim(),
+            article:(this.causeDraft.article||'').trim(),
+            lot:(this.causeDraft.lot||'').trim(),
+            type_defaut:(this.causeDraft.type_defaut||'').trim(),
+            raison_cadence:(this.causeDraft.raison_cadence||'').trim(),
+            zone:(this.causeDraft.zone||'').trim(),
+            utilite:(this.causeDraft.utilite||'').trim(),
+            duree_min:minutes,
+            impact_qty:0,
+            event_code:''
+          };
+          this.currentHour.causes=[...this.currentHour.causes,payload];
+          this.resetCauseDraft(true);
+          this.recalcCurrent();
+        },
+        // PATCH UX: suppression d'une cause du tableau de synthèse
+        removeCause(uid){
+          this.currentHour.causes=this.currentHour.causes.filter(cause=>cause.uid!==uid);
+          this.recalcCurrent();
+        },
         // PATCH UX: style des badges de type d'arrêt
         badgeClassForType(type){
           const base='px-3 py-1 rounded-full text-xs font-medium';
@@ -5164,6 +5107,7 @@ const demoState = {
         recalcCurrent(){
           if(Boolean(this.currentHour.closed)){
             const oeeTarget=this.getOEETarget(this.currentHour.hh);
+            // PATCH UI: métriques dédiées aux heures fermées
             this.currentHourMetrics={
               toJustify:0,
               delta:0,
@@ -5178,19 +5122,25 @@ const demoState = {
           }
           const rate=this.getTargetRate(this.currentHour.hh);
           const producedRaw=rate>0?Math.min(60,(Number(this.currentHour.good||0)/rate)*60):0;
+          const toJustify=Math.max(0,Math.round(60-producedRaw));
+          const causes=this.currentHour.causes.reduce((a,c)=>a+Number(c.minutes||0),0);
+          const delta=Number((toJustify-causes).toFixed(1));
+          const valid=Math.abs(delta)<0.5;
           const performance=rate>0?Math.min(1,Number(this.currentHour.good||0)/rate):0;
+          const availability=valid?1:0;
           const quality=this.getQualityTarget(this.currentHour.hh);
-          const oee=Math.max(0,Math.min(1,performance*quality));
+          const oee=Math.max(0,Math.min(1,availability*performance*quality));
           const oeeTarget=this.getOEETarget(this.currentHour.hh);
           this.currentHourMetrics={
-            toJustify:0,
-            delta:0,
+            toJustify,
+            delta,
             oee:(oee*100).toFixed(1)+'%',
             oeeTarget:oeeTarget>0?(oeeTarget*100).toFixed(1)+'%':'',
-            valid:true,
-            message:'Causes désactivées',
-            ariaLabel:'Validation automatique, module événements désactivé'
+            valid,
+            message:valid?'Delta équilibré':'Ajuster les causes',
+            ariaLabel:`Validation ${valid?'complète':'incomplète'}, delta ${delta} minutes`
           };
+          // forcer le rafraîchissement des pastilles sans sauvegarde
           this.$nextTick(()=>{ this.hours = this.state.heures.map(h=>({...h,closed:Boolean(h.closed),delta:this.computeDelta(h)})); });
         },
         dictate(){
@@ -5203,6 +5153,61 @@ const demoState = {
         },
         async submitHour(){
           if(!this.currentHourMetrics.valid){pushToast('Validation','Equilibrer le delta', 'danger');return;}
+          const cfg=(window.EVENTS_CONFIG||window.evt_DEFAULT_EVENTS_CONFIG||null);
+          let counter=Number(this.evt_eventCounterToday||0);
+          const ensureVal=value=>{
+            if(value===0) return true;
+            return value!==null && value!==undefined && String(value).trim()!=='';
+          };
+          if(Array.isArray(this.currentHour.causes)){
+            for(const cause of this.currentHour.causes){
+              const state={
+                type:(cause.type||'').trim(),
+                categorie:(cause.cat||cause.category||'').trim(),
+                cause_5m:(cause.cause_5m||cause.cause5m||'').trim(),
+                detail_code:(cause.detail_code||cause.detailCode||'').trim(),
+                equipement:(cause.equipement||cause.equipment||'').trim(),
+                sous_ensemble:(cause.sous_ensemble||cause.sousEnsemble||'').trim(),
+                article:(cause.article||'').trim(),
+                lot:(cause.lot||'').trim(),
+                type_defaut:(cause.type_defaut||cause.typeDefaut||'').trim(),
+                raison_cadence:(cause.raison_cadence||cause.raisonCadence||'').trim(),
+                zone:(cause.zone||'').trim(),
+                utilite:(cause.utilite||cause.utility||'').trim()
+              };
+              if(typeof evt_updateDynamicFields==='function'){
+                evt_updateDynamicFields(state);
+              }
+              const rr=typeof evt_applyRules==='function'?evt_applyRules(state,cfg?.rules||[]):{required:[],optional:[]};
+              const missing=(rr.required||[]).find(field=>!ensureVal(cause[field]));
+              if(missing){
+                const label=(cfg?.fields?.[missing]?.label||missing);
+                pushToast('Causes',`Champ requis : ${label}`,'danger');
+                return;
+              }
+              if(state.detail_code && (!cause.detail_label||!cause.detail_label.trim())){
+                const match=cfg?.taxonomy?.details?.find(entry=>entry.code===state.detail_code);
+                if(match){cause.detail_label=match.label||'';}
+              }
+              cause.detail_code=state.detail_code;
+              cause.cause_5m=state.cause_5m;
+              cause.duree_min=Number(cause.minutes ?? cause.duree_min ?? 0);
+              if(!Number.isFinite(cause.impact_qty)){cause.impact_qty=0;}
+              const existingCode=(cause.event_code||cause.eventCode||'').trim();
+              if(existingCode){
+                const match=existingCode.match(/(\d{2})$/);
+                if(match){
+                  const val=Number(match[1]);
+                  if(Number.isFinite(val)){counter=Math.max(counter,val);}
+                }
+              }else if(typeof evt_genEventCode==='function'){
+                counter+=1;
+                const eventCode=evt_genEventCode(cfg,state,counter);
+                if(eventCode){cause.event_code=eventCode;}
+              }
+            }
+            this.evt_eventCounterToday=counter;
+          }
           const index=this.state.heures.findIndex(h=>h.hh===this.currentHour.hh);
           if(index>-1){
             const closed=Boolean(this.currentHour.closed);
@@ -5669,36 +5674,189 @@ const demoState = {
         notifyShift(id){pushToast('Notification',`Equipe ${id} informée`,'success');},
         openChat(){pushToast('Chat','Chat collaboratif à venir','info');},
         exportJSON(){
-          pushToast('Événements','Module désactivé','info');
+          const blob=this.buildDayJSONBlob();
+          const line=this.state.meta?.line||'L';
+          const date=this.state.meta?.date||new Date().toISOString().slice(0,10);
+          this.downloadBlob(`Pilotage_${line}_${date}.json`,blob);
         },
         exportCSV(){
-          pushToast('Événements','Module désactivé','info');
+          const blob=this.buildDayCSVBlob();
+          const date=this.state.meta?.date||new Date().toISOString().slice(0,10);
+          const line=this.state.meta?.line||'L';
+          this.downloadBlob(`Pilotage_${line}_${date}.csv`,blob);
+        },
+        evt_collectEvents(){
+          const dateRef=this.state.meta?.date||new Date().toISOString().slice(0,10);
+          const hours=Array.isArray(this.state.heures)?this.state.heures:[];
+          const events=[];
+          hours.forEach(hour=>{
+            const causes=Array.isArray(hour.causes)?hour.causes:[];
+            const hh=hour.hh||'';
+            const stamp=hour.timestamp||`${dateRef} ${hh}`;
+            causes.forEach(cause=>{
+              events.push({
+                date_heure:cause.date_heure||stamp,
+                type:cause.type||'',
+                categorie:cause.cat||cause.category||'',
+                cause_5m:cause.cause_5m||cause.cause5m||'',
+                detail_code:cause.detail_code||cause.detailCode||'',
+                detail_label:cause.detail_label||cause.detailLabel||'',
+                equipement:cause.equipement||cause.equipment||'',
+                sous_ensemble:cause.sous_ensemble||cause.sousEnsemble||'',
+                article:cause.article||'',
+                lot:cause.lot||'',
+                type_defaut:cause.type_defaut||cause.typeDefaut||'',
+                raison_cadence:cause.raison_cadence||cause.raisonCadence||'',
+                zone:cause.zone||'',
+                utilite:cause.utilite||cause.utility||'',
+                duree_min:Number(cause.duree_min ?? cause.minutes ?? 0),
+                impact_qty:Number(cause.impact_qty ?? 0),
+                commentaire:cause.comment||'',
+                event_code:cause.event_code||cause.eventCode||''
+              });
+            });
+          });
+          return events;
+        },
+        evt_exportEventsCSV(){
+          const cfg=window.EVENTS_CONFIG||window.evt_DEFAULT_EVENTS_CONFIG;
+          const events=this.evt_collectEvents();
+          if(!events.length){pushToast('Export','Aucun événement saisi','info');return;}
+          const columns=(cfg?.export?.columns)||['date_heure','type','categorie','cause_5m','detail_code','detail_label','equipement','sous_ensemble','article','lot','type_defaut','raison_cadence','zone','utilite','duree_min','impact_qty','commentaire'];
+          const rows=[columns.join(';')];
+          events.forEach(ev=>{
+            rows.push(evt_mapForExport(cfg,ev));
+          });
+          const lineName=this.settings.lineName||this.state.meta?.line||'LXX';
+          const rawDate=this.state.meta?.date||new Date().toISOString().slice(0,10);
+          const todayStr=rawDate.replace(/-/g,'');
+          const outName=(cfg?.export?.filename_pattern||'{LIGNE}_{DATE}').replace('{LIGNE}',lineName||'LXX').replace('{DATE}',todayStr||'YYYYMMDD');
+          const blob=new Blob([`﻿${rows.join('\n')}`],{type:'text/csv;charset=utf-8;'});
+          this.downloadBlob(`${outName}.csv`,blob);
+        },
+        evt_exportEventsJSON(){
+          const cfg=window.EVENTS_CONFIG||window.evt_DEFAULT_EVENTS_CONFIG;
+          const events=this.evt_collectEvents();
+          if(!events.length){pushToast('Export','Aucun événement saisi','info');return;}
+          const payload=events.map(ev=>evt_prepareExportRecord(cfg,ev));
+          const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
+          const lineName=this.settings.lineName||this.state.meta?.line||'LXX';
+          const rawDate=this.state.meta?.date||new Date().toISOString().slice(0,10);
+          const todayStr=rawDate.replace(/-/g,'');
+          const outName=(cfg?.export?.filename_pattern||'{LIGNE}_{DATE}').replace('{LIGNE}',lineName||'LXX').replace('{DATE}',todayStr||'YYYYMMDD');
+          this.downloadBlob(`${outName}.json`,blob);
         },
         exportParetoCSV(){
-          pushToast('Événements','Exports pareto indisponibles (module désactivé)','info');
+          const hours=Array.isArray(this.hoursForTeam)?this.hoursForTeam:[];
+          const categoryFilter=this.filters.category;
+          const subFilter=this.filters.subCategory;
+          const bucket=new Map();
+          hours.forEach(hour=>{
+            const causes=Array.isArray(hour.causes)?hour.causes:[];
+            causes.forEach(cause=>{
+              const cat=cause.cat||cause.category||'Non renseigné';
+              const sub=cause.sub||cause.subCategory||'—';
+              if(categoryFilter!=='all'&&cat!==categoryFilter) return;
+              if(subFilter&&sub!==subFilter) return;
+              const minutes=Number(cause.minutes||0);
+              if(minutes<=0) return;
+              const key=`${cat}|||${sub}`;
+              if(!bucket.has(key)){
+                bucket.set(key,{cat,sub,minutes:0,hours:new Set(),frequency:0});
+              }
+              const entry=bucket.get(key);
+              entry.minutes+=minutes;
+              entry.frequency+=1;
+              if(hour.hh) entry.hours.add(hour.hh);
+            });
+          });
+          const rows=['Categorie;Sous_categorie;Minutes;Pct_total_jour;Heures_impactées;Frequence'];
+          const totals=Array.from(bucket.values()).sort((a,b)=>b.minutes-a.minutes);
+          const totalMinutes=totals.reduce((sum,item)=>sum+item.minutes,0);
+          const escape=(value)=>{
+            if(value===null||value===undefined) return '';
+            const str=String(value).replace(/"/g,'""');
+            return (str.includes(';')||str.includes('"')) ? '\"'+str+'\"' : str;
+          };
+          totals.forEach(item=>{
+            const pct=totalMinutes?((item.minutes/totalMinutes)*100):0;
+            const minutesValue=Math.round(item.minutes*10)/10;
+            const hoursList=Array.from(item.hours).sort();
+            const hoursValue=hoursList.length?hoursList.join(','):'';
+            const catLabel=item.cat||'Non renseigné';
+            const subLabel=item.sub||'—';
+            rows.push(`${escape(catLabel)};${escape(subLabel)};${minutesValue};${pct.toFixed(1)};${escape(hoursValue)};${item.frequency}`);
+          });
+          const blob=new Blob([`﻿${rows.join('\n')}`],{type:'text/csv;charset=utf-8;'});
+          const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`Pareto_${this.state.meta.line}_${this.state.meta.date}.csv`;a.click();
         },
-        // PATCH pareto-type: export CSV dédié (désactivé)
+        // PATCH pareto-type: export CSV dédié
         exportParetoTypeCSV(){
-          pushToast('Événements','Exports pareto indisponibles (module désactivé)','info');
+          const hours=Array.isArray(this.hoursForTeam)?this.hoursForTeam:[];
+          const data=this.computeParetoTypes(hours);
+          const rows=['Type;Minutes;Pct_total'];
+          const totalMinutes=data.totals.reduce((sum,item)=>sum+item.value,0);
+          const escape=value=>{
+            if(value===null||value===undefined) return '';
+            const str=String(value).replace(/"/g,'""');
+            return (str.includes(';')||str.includes('"'))?`"${str}"`:str;
+          };
+          data.totals.forEach(item=>{
+            const pct=totalMinutes?((item.value/totalMinutes)*100):0;
+            rows.push(`${escape(item.label)};${(Math.round(item.value*10)/10)};${pct.toFixed(1)}`);
+          });
+          const blob=new Blob([`﻿${rows.join('\n')}`],{type:'text/csv;charset=utf-8;'});
+          const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`ParetoType_${this.state.meta.line}_${this.state.meta.date}.csv`;a.click();
         },
         getCategoryStore(){
-          const snapshot=settingsStore.get();
-          const categories=deepClone(snapshot.categories||[]);
-          const pool=deepClone(snapshot.pool||[]);
-          const stopTypes=Array.isArray(snapshot.stopTypes)?snapshot.stopTypes.slice():[];
-          return {categories,pool,stopTypes};
+          const rawCats=safeGet(KEY_CATS,[]);
+          const rawPool=safeGet(KEY_SUBPOOL,[]);
+          const categories=Array.isArray(rawCats)?rawCats.map((cat,index)=>({
+            id:cat?.id||crypto.randomUUID(),
+            label:String(cat?.label||cat?.name||'').trim(),
+            order:Number.isFinite(Number(cat?.order))?Number(cat.order):index,
+            type:String(cat?.type||cat?.stopType||'').trim(),
+            sub:Array.isArray(cat?.sub)?cat.sub:Array.isArray(cat?.subs)?cat.subs:[]
+          })) : [];
+          categories.forEach((cat,idx)=>{
+            cat.order=idx;
+            cat.sub=Array.isArray(cat.sub)?cat.sub.map(sub=>({
+              id:sub?.id||crypto.randomUUID(),
+              label:String(sub?.label||sub?.name||'').trim(),
+              defaultMinutes:Math.max(0,Math.round(Number(sub?.defaultMinutes ?? sub?.defaultMin ?? 0)))
+            })) : [];
+            const resolved=this.ensureStopType(cat.type||this.inferTypeFromSchema(cat.label));
+            cat.type=resolved;
+          });
+          const pool=Array.isArray(rawPool)?rawPool.map(sub=>({
+            id:sub?.id||crypto.randomUUID(),
+            label:String(sub?.label||sub?.name||'').trim(),
+            defaultMinutes:Math.max(0,Math.round(Number(sub?.defaultMinutes ?? sub?.defaultMin ?? 0)))
+          })) : [];
+          return {categories,pool,stopTypes:this.stopTypes};
         },
         persistCategoryStore(store){
-          const payloadCats=Array.isArray(store?.categories)?store.categories:[];
-          const payloadPool=Array.isArray(store?.pool)?store.pool:[];
-          const typesFromStore=Array.isArray(store?.stopTypes)?store.stopTypes:payloadCats.map(cat=>cat.type);
+          const payloadCats=(store.categories||[]).map((cat,index)=>({
+            id:cat.id||crypto.randomUUID(),
+            label:cat.label||'',
+            order:index,
+            type:cat.type||'Autres',
+            sub:Array.isArray(cat.sub)?cat.sub.map(sub=>({
+              id:sub.id||crypto.randomUUID(),
+              label:sub.label||'',
+              defaultMinutes:Math.max(0,Math.round(Number(sub.defaultMinutes||0)))
+            })) : []
+          }));
+          const payloadPool=(store.pool||[]).map(sub=>({
+            id:sub.id||crypto.randomUUID(),
+            label:sub.label||'',
+            defaultMinutes:Math.max(0,Math.round(Number(sub.defaultMinutes||0)))
+          }));
+          const typesFromStore=Array.isArray(store.stopTypes)?store.stopTypes:payloadCats.map(cat=>cat.type);
           const normalizedTypes=this.normalizeStopTypeList(typesFromStore);
-          settingsStore.set({
-            categories:payloadCats,
-            pool:payloadPool,
-            stopTypes:normalizedTypes
-          });
-          settingsStore.persist();
+          safeSet(KEY_CATS,payloadCats);
+          safeSet(KEY_SUBPOOL,payloadPool);
+          safeSet(KEY_STOP_TYPES,normalizedTypes);
           window.dispatchEvent(new CustomEvent('cats:updated',{detail:{categories:payloadCats,pool:payloadPool,types:normalizedTypes}}));
         },
         importCategoriesFromCSV(file){
@@ -5940,115 +6098,6 @@ const demoState = {
         },
       }));
     });
-
-    function loadRules(){
-      const snapshot=settingsStore.get();
-      return snapshot.rules && typeof snapshot.rules==='object'?snapshot.rules:{rules:[]};
-    }
-    function saveRules(json){
-      settingsStore.set({rules:json});
-      settingsStore.persist();
-    }
-    function testRules(sel){
-      return applyRules(sel);
-    }
-    function loadReferentiels(){
-      try { return JSON.parse(localStorage.getItem('pp:params:refs') || '{}'); }
-      catch { return {}; }
-    }
-    function rulesModule(){
-      return {
-        rulesJson: JSON.stringify(loadRules(), null, 2),
-        status: '',
-        sel: { type:'', category:'', cause:'' },
-        stopTypes: Object.keys(window.__stopSchema||{}),
-        cats: [],
-        subs: [],
-        testResult: { requires:[], defaults:{} },
-        init(){
-          this.refreshStopTypes();
-          this._settingsHandler=()=>{
-            this.refreshStopTypes();
-            if(this.sel.type){ this.onType(); }
-            if(this.sel.category){ this.onCat(); }
-          };
-          window.addEventListener('settings:updated', this._settingsHandler);
-          window.addEventListener('prodtrack:params-changed', this._settingsHandler);
-          this.$el.addEventListener('alpine:destroy',()=>{
-            window.removeEventListener('settings:updated', this._settingsHandler);
-            window.removeEventListener('prodtrack:params-changed', this._settingsHandler);
-          });
-        },
-        refreshStopTypes(){
-          this.stopTypes = Object.keys(window.__stopSchema||{});
-          if(this.sel.type && !this.stopTypes.includes(this.sel.type)){
-            this.sel.type='';
-          }
-        },
-        onType(){
-          const store = typeof getCategoryStore==='function' ? getCategoryStore() : null;
-          const t = this.sel.type;
-          this.cats = [];
-          this.subs = [];
-          if(!t || !store) return;
-          // extrait catégories pour ce type
-          const labels = [];
-          (store.categories||[]).forEach(c => { if((c.type||'Autres')===t) labels.push(c.label); });
-          this.cats = labels;
-          this.sel.category = '';
-          this.sel.cause = '';
-        },
-        onCat(){
-          const store = typeof getCategoryStore==='function' ? getCategoryStore() : null;
-          const t = this.sel.type, c = this.sel.category;
-          this.subs = [];
-          if(!t || !c || !store) return;
-          const cat = (store.categories||[]).find(x => x.label===c && (x.type||'Autres')===t);
-          this.subs = (cat?.sub||[]).map(s=>s.label);
-          this.sel.cause = '';
-        },
-        test(){
-          this.testResult = testRules(this.sel);
-        },
-        save(){
-          try {
-            const obj = JSON.parse(this.rulesJson||'{}');
-            if(!obj.rules || !Array.isArray(obj.rules)) throw new Error('Le JSON doit contenir {"rules":[...]}');
-            saveRules(obj);
-            this.status = 'Règles sauvegardées.';
-          } catch(e){
-            this.status = 'Erreur JSON: ' + e.message;
-          }
-        },
-        publish(){
-          try{
-            const obj = JSON.parse(this.rulesJson||'{}');
-            if(!obj.rules || !Array.isArray(obj.rules)) throw new Error('Le JSON doit contenir {"rules":[...]}');
-            saveRules(obj);
-            const stopSchema = buildStopSchema();
-            const rules = obj;
-            const referentiels = loadReferentiels(); // placeholder
-            window.dispatchEvent(new CustomEvent('prodtrack:params-changed', { detail:{ stopSchema, rules, referentiels } }));
-            this.status = 'Publié.';
-          }catch(e){
-            this.status = 'Erreur: ' + e.message;
-          }
-        },
-        resetToSample(){
-          const sample = {
-            "rules":[
-              {
-                "when":{"type":"Disponibilité","category":"Panne équipement","cause":"Pompe"},
-                "requires":["equipement","sousEnsemble"],
-                "defaults":{"minutes":5}
-              }
-            ]
-          };
-          this.rulesJson = JSON.stringify(sample, null, 2);
-          this.status = 'Exemple chargé.';
-        }
-      };
-    }
   </script>
   <script>
   (() => {
@@ -6120,57 +6169,6 @@ const demoState = {
       }
     }
 
-    function settingsStoreSnapshotToForm(snapshot) {
-      const data = snapshot && typeof snapshot === 'object' ? snapshot : settingsStore.get();
-      return {
-        ligne: data.lineName || '',
-        saveTarget: data.saveTarget || 'local',
-        savePath: data.savePath || '',
-        types: Array.isArray(data.stopTypes) ? data.stopTypes : [],
-        categories: {
-          categories: Array.isArray(data.categories) ? data.categories : [],
-          pool: Array.isArray(data.pool) ? data.pool : [],
-          stopTypes: Array.isArray(data.stopTypes) ? data.stopTypes : []
-        },
-        sousCategories: [],
-        oeeCible: Array.isArray(data.oeeProfiles) ? data.oeeProfiles : []
-      };
-    }
-
-    function applyToCentralStoreFromNormalized(normalized) {
-      if (!normalized || typeof normalized !== 'object') return;
-      const patch = {};
-      if (Object.prototype.hasOwnProperty.call(normalized, 'ligne')) {
-        patch.lineName = typeof normalized.ligne === 'string' ? normalized.ligne : '';
-      }
-      if (Object.prototype.hasOwnProperty.call(normalized, 'saveTarget')) {
-        patch.saveTarget = typeof normalized.saveTarget === 'string' ? normalized.saveTarget : 'local';
-      }
-      if (Object.prototype.hasOwnProperty.call(normalized, 'savePath')) {
-        patch.savePath = typeof normalized.savePath === 'string' ? normalized.savePath : '';
-      }
-      if (Object.prototype.hasOwnProperty.call(normalized, 'types') && Array.isArray(normalized.types)) {
-        patch.stopTypes = normalized.types;
-      }
-      if (Object.prototype.hasOwnProperty.call(normalized, 'categories') && normalized.categories && typeof normalized.categories === 'object' && !Array.isArray(normalized.categories)) {
-        if (Array.isArray(normalized.categories.categories)) {
-          patch.categories = normalized.categories.categories;
-        }
-        if (Array.isArray(normalized.categories.pool)) {
-          patch.pool = normalized.categories.pool;
-        }
-        if (Array.isArray(normalized.categories.stopTypes)) {
-          patch.stopTypes = normalized.categories.stopTypes;
-        }
-      }
-      if (Object.prototype.hasOwnProperty.call(normalized, 'oeeCible') && Array.isArray(normalized.oeeCible)) {
-        patch.oeeProfiles = normalized.oeeCible;
-      }
-      if (Object.keys(patch).length) {
-        settingsStore.set(patch);
-      }
-    }
-
     function settingsStoreWriteForm(data) {
       if (!data || typeof data !== 'object') return;
       settingsStoreIsApplying = true;
@@ -6214,8 +6212,6 @@ const demoState = {
         console.error('Save settings failed', error);
         alert('Erreur de sauvegarde des paramètres (quota navigateur atteint ?)');
       }
-      applyToCentralStoreFromNormalized(normalized);
-      settingsStore.persist();
     }
 
     function settingsStoreDebouncedSave() {
@@ -6246,28 +6242,24 @@ const demoState = {
       settingsStoreMigrateLegacy();
       const key = settingsStoreCurrentKey(forLine);
       const raw = localStorage.getItem(key);
-      if (raw) {
-        try {
-          const obj = JSON.parse(raw);
-          const data = obj && typeof obj === 'object' && obj.data ? obj.data : null;
-          if (data) {
-            applyToCentralStoreFromNormalized(data);
-            settingsStore.persist();
-            return data;
-          }
-        } catch {/* noop */}
+      if (!raw) return null;
+      try {
+        const obj = JSON.parse(raw);
+        return obj && typeof obj === 'object' && obj.data ? obj.data : null;
+      } catch {
+        return null;
       }
-      return settingsStoreSnapshotToForm(settingsStore.get());
     }
 
     function settingsStoreExportJSON() {
-      const snapshot = settingsStore.get();
-      const lineRaw = snapshot.lineName || 'default';
+      const normalized = settingsStoreNormalizeData(settingsStoreReadForm());
+      const lineRaw = typeof normalized.ligne === 'string' && normalized.ligne ? normalized.ligne : 'default';
       const payload = {
         __type: 'tracker.settings',
         __v: 1,
         exportedAt: new Date().toISOString(),
-        settings: snapshot
+        lineKey: settingsStoreCurrentKey(lineRaw),
+        data: normalized
       };
       const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
       const a = document.createElement('a');
@@ -6284,11 +6276,9 @@ const demoState = {
       reader.onload = () => {
         try {
           const obj = JSON.parse(reader.result);
-          const data = obj && typeof obj === 'object' && (obj.settings || obj.data) ? (obj.settings || obj.data) : obj;
-          const snapshot = normalizeSettings(data);
-          settingsStore.replace(snapshot);
-          settingsStore.persist();
-          settingsStoreWriteForm(settingsStoreSnapshotToForm(snapshot));
+          const data = obj && typeof obj === 'object' && obj.data ? obj.data : obj;
+          settingsStoreWriteForm(data);
+          settingsStoreSave();
           alert('Paramètres importés.');
         } catch (error) {
           console.error('Import settings failed', error);
@@ -6302,10 +6292,15 @@ const demoState = {
       const raw = settingsStoreReadForm();
       const key = settingsStoreCurrentKey(raw.ligne);
       localStorage.removeItem(key);
-      const snapshot = normalizeSettings({});
-      settingsStore.replace(snapshot);
-      settingsStore.persist();
-      settingsStoreWriteForm(settingsStoreSnapshotToForm(snapshot));
+      settingsStoreQsa().forEach((el) => {
+        if (el.type === 'checkbox') {
+          el.checked = false;
+        } else {
+          el.value = '';
+        }
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      });
       alert('Paramètres réinitialisés pour cette ligne.');
     }
 
@@ -6327,10 +6322,6 @@ const demoState = {
           case 'types':
             if (Array.isArray(payload) && typeof app.setStopTypes === 'function') {
               app.setStopTypes(payload);
-            }
-            if (Array.isArray(payload)) {
-              settingsStore.set({ stopTypes: payload });
-              settingsStore.persist();
             }
             break;
           case 'categories': {
@@ -6363,8 +6354,6 @@ const demoState = {
               if (typeof app.persist === 'function') {
                 app.persist();
               }
-              settingsStore.set({ oeeProfiles: payload });
-              settingsStore.persist();
             }
             break;
           case 'typeCategoryMap':
@@ -6926,7 +6915,6 @@ const demoState = {
     scheduleRerender();
   })();
   </script>
-
   <script>
 (() => {
   const q = s => document.querySelector(s);
@@ -6939,24 +6927,37 @@ const demoState = {
   // Reconstruit le stopSchema depuis Paramètres (catégories + sous-cats) et le mapping Type↔Cat
   function rebuildStopSchemaFromParams(){
     const app = (document.querySelector('[x-data="appState"]')?.__x || {}).$data;
-    if (!app) return;
+    if (!app || !Array.isArray(app.settings?.categories)) return;
 
-    const schema = buildStopSchema();
-    window.__stopSchema = schema;
-    const stopTypes = settingsStore.get().stopTypes || Object.keys(schema);
+    const map = readMap();
+    const schema = {};
+    const stopTypesSet = new Set(app.stopTypes || []);
 
-    if (app.settings) {
-      app.settings.stopSchema = schema;
-      app.settings.stopTypes = Array.isArray(stopTypes) ? stopTypes.slice() : [];
+    for (const cat of app.settings.categories){
+      const catLabel = (cat?.label || '').trim();
+      const subs = (cat?.sub || []).map(s => s?.label || '').filter(Boolean);
+
+      // types autorisés pour cette catégorie selon le mapping
+      const allowed = map.filter(p => p?.category === catLabel && p?.type).map(p => p.type);
+      const uniqAllowed = Array.from(new Set(allowed));
+
+      // si pas de mapping, on retombe sur le type simple éventuellement stocké sur la catégorie
+      const fallbackTypes = uniqAllowed.length ? uniqAllowed
+                           : (cat?.type ? [cat.type] : []);
+
+      for (const t of fallbackTypes){
+        if (!t) continue;
+        stopTypesSet.add(t);
+        if (!schema[t]) schema[t] = {};
+        schema[t][catLabel] = subs.slice();
+      }
     }
-    if (app.state && app.state.settings) {
-      app.state.settings.stopSchema = schema;
-      app.state.settings.stopTypes = Array.isArray(stopTypes) ? stopTypes.slice() : [];
-    }
-    app.stopTypes = Array.isArray(stopTypes) ? stopTypes.slice() : [];
-    if (typeof app.persist === 'function') {
-      app.persist();
-    }
+
+    // Applique au state pour piloter les <select> existants
+    app.settings.stopSchema = schema;
+    app.stopTypes = Array.from(stopTypesSet);
+    // Réveille Alpine
+    app.persist && app.persist();
   }
 
   window.rebuildStopSchemaFromParams = rebuildStopSchemaFromParams;
@@ -7064,6 +7065,346 @@ const demoState = {
   // Premier passage si on arrive depuis Paramètres
   document.addEventListener('DOMContentLoaded', refreshCauseSelects);
 })();
+  </script>
+  <script>
+/** ==== CONFIG FALLBACK ==== **/
+window.evt_DEFAULT_EVENTS_CONFIG = {
+  "version": "1.0",
+  "taxonomy": {
+    "types": ["Disponibilité","Performance","Qualité"],
+    "categories": [
+      { "label":"Panne","type":"Disponibilité","sub":["Mécanique","Électrique","Capteur","Logiciel"] },
+      { "label":"Réglage","type":"Disponibilité","sub":["Démarrage","Changement format","Calage"] },
+      { "label":"Micro-arrêt","type":"Performance","sub":["Blocage court","Vidage convoyeur"] },
+      { "label":"Vitesse réduite","type":"Performance","sub":["Matière","Process","Organisation"] },
+      { "label":"Défaut en cours","type":"Qualité","sub":["Impression","Contamination","Déformation"] },
+      { "label":"Manque article","type":"Disponibilité","sub":["Composant","Produit"] },
+      { "label":"Incident environnemental","type":"Disponibilité","sub":["Air","Eau","Électricité","Vapeur"] }
+    ],
+    "causes_5m": ["Main-d'œuvre","Méthode","Matière","Matériel","Milieu"],
+    "details": [
+      { "code":"DET-001","label":"Pompe doseuse bloquée","category":"Panne","sub":"Mécanique" },
+      { "code":"DET-002","label":"Réglage tête de sertissage","category":"Réglage","sub":"Changement format" },
+      { "code":"DET-003","label":"Manque étiquette","category":"Manque article","sub":"Composant" }
+    ]
+  },
+  "fields": {
+    "equipement": { "label":"Équipement","type":"select","source":"equipements" },
+    "sous_ensemble": { "label":"Sous-ensemble","type":"select","source":"sous_ensembles","depends_on":"equipement" },
+    "article": { "label":"Article","type":"select","source":"articles" },
+    "lot": { "label":"Lot","type":"text" },
+    "type_defaut": { "label":"Type de défaut","type":"select","source":"defauts" },
+    "raison_cadence": { "label":"Raison cadence","type":"textarea" },
+    "zone": { "label":"Zone","type":"select","source":"zones" },
+    "utilite": { "label":"Utilité","type":"select","source":"utilities" }
+  },
+  "rules": [
+    { "when": { "categorie_in": ["Panne","Réglage"] }, "requires": ["equipement","sous_ensemble"] },
+    { "when": { "cause_5m": "Matériel" }, "requires": ["equipement","sous_ensemble"] },
+    { "when": { "categorie": "Manque article" }, "requires": ["article","lot"] },
+    { "when": { "categorie": "Défaut en cours" }, "requires": ["article","type_defaut"], "optional": ["lot"] },
+    { "when": { "categorie": "Vitesse réduite" }, "requires": ["raison_cadence"] },
+    { "when": { "categorie": "Incident environnemental" }, "requires": ["zone","utilite"] }
+  ],
+  "lists": {
+    "equipements": ["Remplisseuse","Mirage","Conditionneuse"],
+    "sous_ensembles": {
+      "Remplisseuse": ["Pompe","Aiguille","Vis sans fin"],
+      "Mirage": ["Caméra","Convoyeur","Éjecteur"],
+      "Conditionneuse": ["Étiqueteuse","Scellage","Alimenteur"]
+    },
+    "articles": ["Flacon","Bouchon","Étiquette","Étui"],
+    "defauts": ["Déformation","Impression","Contamination"],
+    "zones": ["Remplissage","Mirage","Conditionnement"],
+    "utilities": ["Air","Eau","Vapeur","Électricité"]
+  },
+  "export": {
+    "filename_pattern": "{LIGNE}_{DATE}",
+    "columns": ["date_heure","type","categorie","cause_5m","detail_code","detail_label","equipement","sous_ensemble","article","lot","type_defaut","raison_cadence","zone","utilite","duree_min","impact_qty","commentaire"]
+  },
+  "ui": { "generate_event_code": true, "event_code_pattern": "{TYPE}-{EQ}-{SUB}-{NN}" }
+};
+
+async function evt_loadEventsConfig(){
+  try {
+    const response = await fetch('config_evenements.json',{cache:'no-store'});
+    if(!response.ok) throw new Error('fetch config ko');
+    const cfg = await response.json();
+    window.EVENTS_CONFIG = cfg;
+  } catch (err) {
+    window.EVENTS_CONFIG = window.evt_DEFAULT_EVENTS_CONFIG;
+  }
+  window.dispatchEvent(new CustomEvent('evt:config-ready',{detail:{config:window.EVENTS_CONFIG}}));
+}
+
+function evt_norm(value){
+  return (value||'').toString().trim();
+}
+
+function evt_fillSelect(sel, arr){
+  if(!sel) return;
+  const current=sel.value;
+  const list=Array.isArray(arr)?arr:[];
+  sel.innerHTML='<option value=""></option>'+list.map(option=>`<option value="${String(option)}">${String(option)}</option>`).join('');
+  if(current && list.map(String).includes(current)){
+    sel.value=current;
+  }
+}
+
+function evt_compact(input){
+  const val=evt_norm(input).replace(/\s+/g,'').slice(0,6).toUpperCase();
+  return val||'NA';
+}
+
+function evt_matchWhen(state, when){
+  if(!when) return true;
+  if(when.type && state.type!==when.type) return false;
+  if(when.categorie && state.categorie!==when.categorie) return false;
+  if(when.categorie_in && !when.categorie_in.includes(state.categorie)) return false;
+  if(when.cause_5m && state.cause_5m!==when.cause_5m) return false;
+  if(when.detail_code && state.detail_code!==when.detail_code) return false;
+  return true;
+}
+
+function evt_applyRules(state, rules){
+  const required=new Set();
+  const optional=new Set();
+  (rules||[]).forEach(rule=>{
+    if(evt_matchWhen(state, rule.when)){
+      (rule.requires||[]).forEach(field=>required.add(field));
+      (rule.optional||[]).forEach(field=>optional.add(field));
+    }
+  });
+  return {required:[...required],optional:[...optional]};
+}
+
+function evt_prepareExportRecord(cfg, event){
+  const columns=(cfg?.export?.columns)||['date_heure','type','categorie','cause_5m','detail_code','detail_label','equipement','sous_ensemble','article','lot','type_defaut','raison_cadence','zone','utilite','duree_min','impact_qty','commentaire'];
+  const record={
+    date_heure: event.date_heure||event.timestamp||'',
+    type: event.type||'',
+    categorie: event.categorie||event.category||'',
+    cause_5m: event.cause_5m||event.cause5m||'',
+    detail_code: event.detail_code||event.detailCode||'',
+    detail_label: event.detail_label||event.detailLabel||'',
+    equipement: event.equipement||event.equipment||'',
+    sous_ensemble: event.sous_ensemble||event.sousEnsemble||'',
+    article: event.article||'',
+    lot: event.lot||'',
+    type_defaut: event.type_defaut||event.typeDefaut||'',
+    raison_cadence: event.raison_cadence||event.raisonCadence||'',
+    zone: event.zone||'',
+    utilite: event.utilite||event.utility||'',
+    duree_min: Number.isFinite(Number(event.duree_min ?? event.minutes ?? 0)) ? Number(event.duree_min ?? event.minutes ?? 0) : 0,
+    impact_qty: Number.isFinite(Number(event.impact_qty ?? event.impactQty ?? 0)) ? Number(event.impact_qty ?? event.impactQty ?? 0) : 0,
+    commentaire: event.commentaire || event.comment || ''
+  };
+  const output={};
+  columns.forEach(col=>{output[col]=record[col]??'';});
+  return output;
+}
+
+function evt_escapeCSV(value){
+  if(value===null||value===undefined) return '';
+  const str=String(value);
+  return /[";\n]/.test(str) ? `"${str.replace(/"/g,'""')}"` : str;
+}
+
+function evt_mapForExport(cfg, event){
+  const columns=(cfg?.export?.columns)||['date_heure','type','categorie','cause_5m','detail_code','detail_label','equipement','sous_ensemble','article','lot','type_defaut','raison_cadence','zone','utilite','duree_min','impact_qty','commentaire'];
+  const record=evt_prepareExportRecord(cfg,event);
+  return columns.map(col=>evt_escapeCSV(record[col])).join(';');
+}
+
+function evt_genEventCode(cfg, state, countNN){
+  if(!cfg || cfg.ui?.generate_event_code===false) return '';
+  const pattern=cfg.ui?.event_code_pattern || '{TYPE}-{EQ}-{SUB}-{NN}';
+  return pattern
+    .replace('{TYPE}', evt_compact(state.type))
+    .replace('{EQ}', evt_compact(state.equipement))
+    .replace('{SUB}', evt_compact(state.sous_ensemble))
+    .replace('{NN}', String(countNN||1).padStart(2,'0'));
+}
+
+function evt_bindDependentLists(cfg){
+  const lists=cfg?.lists||{};
+  evt_fillSelect(document.getElementById('equipement'), lists.equipements||[]);
+  evt_fillSelect(document.getElementById('article'), lists.articles||[]);
+  evt_fillSelect(document.getElementById('type_defaut'), lists.defauts||[]);
+  evt_fillSelect(document.getElementById('zone'), lists.zones||[]);
+  evt_fillSelect(document.getElementById('utilite'), lists.utilities||[]);
+  const equipSel=document.getElementById('equipement');
+  const subSel=document.getElementById('sous_ensemble');
+  const syncSubs=()=>{
+    const key=equipSel?.value||'';
+    const pool=(lists.sous_ensembles||{})[key]||[];
+    evt_fillSelect(subSel,pool);
+  };
+  if(equipSel && subSel){
+    equipSel.addEventListener('change',()=>{syncSubs();},{passive:true});
+    syncSubs();
+  }
+}
+
+function evt_bindDetailOptions(cfg){
+  const detailSel=document.getElementById('detail');
+  if(!detailSel) return;
+  const catSel=document.getElementById('categorie');
+  const subSel=document.getElementById('sous_categorie')||document.getElementById('sous_ensemble');
+  const typeSel=document.getElementById('type');
+  const update=()=>{
+    const category=catSel?.value||'';
+    const sub=subSel?.value||'';
+    const details=(cfg?.taxonomy?.details)||[];
+    const filtered=details.filter(entry=>entry.category===category && (!entry.sub || entry.sub===sub));
+    const current=detailSel.value;
+    detailSel.innerHTML='<option value=""></option>'+filtered.map(item=>`<option value="${item.code}">${item.label}</option>`).join('');
+    if(current && filtered.some(item=>item.code===current)){
+      detailSel.value=current;
+    }else{
+      detailSel.value='';
+    }
+    const host=(document.querySelector('[x-data="appState"]')?.__x||{}).$data;
+    if(host){
+      host.causeDraft.detail_code=detailSel.value||'';
+      host.causeDraft.detail_label=detailSel.selectedOptions?.[0]?.textContent?.trim()||'';
+    }
+    if(typeof evt_updateDynamicFields==='function'){
+      const state={
+        type:typeSel?.value||'',
+        categorie:category,
+        cause_5m:host?.causeDraft?.cause5m||host?.causeDraft?.cause_5m||'',
+        detail_code:detailSel.value||'',
+        equipement:host?.causeDraft?.equipement||'',
+        sous_ensemble:host?.causeDraft?.sous_ensemble||'',
+        article:host?.causeDraft?.article||'',
+        lot:host?.causeDraft?.lot||'',
+        type_defaut:host?.causeDraft?.type_defaut||'',
+        raison_cadence:host?.causeDraft?.raison_cadence||'',
+        zone:host?.causeDraft?.zone||'',
+        utilite:host?.causeDraft?.utilite||''
+      };
+      evt_updateDynamicFields(state);
+    }
+  };
+  catSel && catSel.addEventListener('change',update,{passive:true});
+  subSel && subSel.addEventListener('change',update,{passive:true});
+  detailSel.addEventListener('change',update,{passive:true});
+  update();
+}
+
+function evt_updateDynamicFields(state){
+  const cfg=window.EVENTS_CONFIG||window.evt_DEFAULT_EVENTS_CONFIG;
+  const rr=evt_applyRules(state,cfg?.rules||[]);
+  const wrappers={
+    equipement:document.getElementById('evt_field_equipement'),
+    sous_ensemble:document.getElementById('evt_field_sous_ensemble'),
+    article:document.getElementById('evt_field_article'),
+    lot:document.getElementById('evt_field_lot'),
+    type_defaut:document.getElementById('evt_field_type_defaut'),
+    raison_cadence:document.getElementById('evt_field_raison_cadence'),
+    zone:document.getElementById('evt_field_zone'),
+    utilite:document.getElementById('evt_field_utilite')
+  };
+  let visible=false;
+  Object.entries(wrappers).forEach(([field,wrapper])=>{
+    if(!wrapper) return;
+    const required=rr.required.includes(field);
+    const optional=rr.optional.includes(field);
+    const show=required||optional;
+    wrapper.style.display=show?'':'none';
+    const input=document.getElementById(field);
+    if(input){
+      input.required=required;
+    }
+    if(show){visible=true;}
+  });
+  const container=document.getElementById('evt_dynamic_fields');
+  if(container){
+    container.style.display=visible?'':'none';
+  }
+  const causeWrap=document.getElementById('evt_field_cause5m');
+  const causeSel=document.getElementById('cause5m');
+  if(causeWrap){
+    const list=(cfg?.taxonomy?.causes_5m)||[];
+    causeWrap.style.display=list.length?'':'none';
+    if(causeSel){causeSel.required=false;}
+  }
+  const detailWrap=document.getElementById('evt_field_detail');
+  const detailSel=document.getElementById('detail');
+  if(detailWrap && detailSel){
+    const detailRequired=rr.required.includes('detail_code');
+    const detailOptional=rr.optional.includes('detail_code');
+    if(detailRequired||detailOptional){
+      detailWrap.style.display='';
+      detailSel.required=detailRequired;
+    }else{
+      const hasOptions=detailSel.options.length>1;
+      detailWrap.style.display=hasOptions?'':'none';
+      detailSel.required=false;
+    }
+  }
+  return rr;
+}
+
+window.evt_prepareExportRecord=evt_prepareExportRecord;
+window.evt_mapForExport=evt_mapForExport;
+window.evt_applyRules=evt_applyRules;
+window.evt_updateDynamicFields=evt_updateDynamicFields;
+window.evt_genEventCode=evt_genEventCode;
+window.evt_bindDetailOptions=evt_bindDetailOptions;
+window.evt_bindDependentLists=evt_bindDependentLists;
+window.evt_loadEventsConfig=evt_loadEventsConfig;
+
+window.addEventListener('DOMContentLoaded', async ()=>{
+  await evt_loadEventsConfig();
+  const cfg=window.EVENTS_CONFIG||window.evt_DEFAULT_EVENTS_CONFIG;
+  const causeSel=document.getElementById('cause5m');
+  if(causeSel){
+    evt_fillSelect(causeSel,cfg?.taxonomy?.causes_5m||[]);
+  }
+  evt_bindDependentLists(cfg);
+  evt_bindDetailOptions(cfg);
+  const host=document.querySelector('[x-data="appState"]');
+  const scheduleUpdate=()=>{
+    const app=host?.__x?.$data;
+    if(!app) return;
+    const draft=app.causeDraft||{};
+    const state={
+      type:draft.type||'',
+      categorie:draft.cat||'',
+      cause_5m:draft.cause5m||draft.cause_5m||'',
+      detail_code:draft.detail_code||'',
+      equipement:draft.equipement||'',
+      sous_ensemble:draft.sous_ensemble||'',
+      article:draft.article||'',
+      lot:draft.lot||'',
+      type_defaut:draft.type_defaut||'',
+      raison_cadence:draft.raison_cadence||'',
+      zone:draft.zone||'',
+      utilite:draft.utilite||''
+    };
+    evt_updateDynamicFields(state);
+  };
+  const ids=['type','categorie','sous_categorie','cause5m','detail','equipement','sous_ensemble','article','lot','type_defaut','raison_cadence','zone','utilite'];
+  ids.forEach(id=>{
+    const el=document.getElementById(id);
+    if(!el) return;
+    const handler=()=>Promise.resolve().then(scheduleUpdate);
+    el.addEventListener('change',handler,{passive:true});
+    if(el.tagName==='INPUT' || el.tagName==='TEXTAREA'){
+      el.addEventListener('input',handler,{passive:true});
+    }
+  });
+  window.addEventListener('evt:config-ready',event=>{
+    const fresh=event.detail?.config||window.EVENTS_CONFIG||window.evt_DEFAULT_EVENTS_CONFIG;
+    if(causeSel){evt_fillSelect(causeSel,fresh?.taxonomy?.causes_5m||[]);}
+    evt_bindDependentLists(fresh);
+    evt_bindDetailOptions(fresh);
+    scheduleUpdate();
+  });
+  scheduleUpdate();
+});
   </script>
 </body>
 </html>
